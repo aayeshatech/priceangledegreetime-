@@ -39,20 +39,38 @@ def get_planetary_positions(julian_day):
     planet_data = {}
     for name, planet_id in planets.items():
         try:
-            pos = swe.calc_ut(julian_day, planet_id)[0]
+            # Get planetary position with error handling
+            ret = swe.calc_ut(julian_day, planet_id)
+            
+            # Check for calculation errors
+            if len(ret) < 7 or ret[6] != 0:
+                st.warning(f"Error calculating {name}: {ret[6] if len(ret) > 6 else 'Unknown error'}")
+                # Use default values
+                planet_data[name] = {
+                    "longitude": 0, "latitude": 0, "distance": 1, 
+                    "speed": 0.5, "sign": "Aries", "degree_in_sign": 0, "retrograde": False
+                }
+                continue
+            
+            # Extract position data
+            longitude = ret[0]
+            latitude = ret[1]
+            distance = ret[2]
+            speed = ret[3]
+            
             planet_data[name] = {
-                "longitude": pos[0],
-                "latitude": pos[1], 
-                "distance": pos[2],
-                "speed": pos[3],
-                "sign": get_zodiac_sign(pos[0]),
-                "degree_in_sign": pos[0] % 30,
-                "retrograde": pos[3] < 0  # Negative speed means retrograde
+                "longitude": longitude,
+                "latitude": latitude, 
+                "distance": distance,
+                "speed": speed,
+                "sign": get_zodiac_sign(longitude),
+                "degree_in_sign": longitude % 30,
+                "retrograde": speed < 0  # Negative speed means retrograde
             }
         except Exception as e:
             st.warning(f"Error calculating {name}: {e}")
-            planet_data[name] = {"longitude": 0, "latitude": 0, "distance": 1, "speed": 0.5, 
-                                "sign": "Aries", "degree_in_sign": 0, "retrograde": False}
+            planet_data[name] = {"longitude": 0, "latitude": 0, "distance": 1, 
+                                "speed": 0.5, "sign": "Aries", "degree_in_sign": 0, "retrograde": False}
     
     return planet_data
 
@@ -81,14 +99,20 @@ def calculate_planetary_transits(selected_date, tehran_time):
     for planet_name, planet_id in planets.items():
         try:
             # Get position at start of day
-            pos_start = swe.calc_ut(start_jd, planet_id)[0]
-            lon_start = pos_start[0] % 360
-            speed_start = pos_start[3]
+            ret_start = swe.calc_ut(start_jd, planet_id)
+            if len(ret_start) < 7 or ret_start[6] != 0:
+                continue
+                
+            lon_start = ret_start[0] % 360
+            speed_start = ret_start[3]
             
             # Get position at end of day
-            pos_end = swe.calc_ut(end_jd, planet_id)[0]
-            lon_end = pos_end[0] % 360
-            speed_end = pos_end[3]
+            ret_end = swe.calc_ut(end_jd, planet_id)
+            if len(ret_end) < 7 or ret_end[6] != 0:
+                continue
+                
+            lon_end = ret_end[0] % 360
+            speed_end = ret_end[3]
             
             # Check for sign change
             sign_start = int(lon_start // 30)
@@ -96,34 +120,42 @@ def calculate_planetary_transits(selected_date, tehran_time):
             
             if sign_start != sign_end:
                 # Approximate time of sign change
-                # This is a simplified calculation
                 sign_change_degree = (sign_end + 1) * 30
                 if sign_change_degree > 360:
                     sign_change_degree = 30
                 
                 # Linear approximation
                 total_change = lon_end - lon_start
-                if total_change == 0:
+                if abs(total_change) < 0.001:  # Avoid division by zero
                     continue
                     
                 fraction = (sign_change_degree - lon_start) / total_change
                 jd_change = start_jd + fraction
                 
-                # Convert to datetime
-                jd_to_dt = swe.jdut1_to_utc(jd_change)
-                transit_time = datetime(jd_to_dt[0], jd_to_dt[1], jd_to_dt[2], 
-                                       int(jd_to_dt[3]), int(jd_to_dt[4]), int(jd_to_dt[5]))
-                
-                # Convert to IST
-                ist_time = transit_time + timedelta(hours=5, minutes=30)
-                
-                transits.append({
-                    "time": ist_time,
-                    "planet": planet_name,
-                    "type": "Sign Change",
-                    "description": f"Enters {get_zodiac_sign(sign_change_degree)}",
-                    "market_impact": get_sign_change_impact(planet_name, get_zodiac_sign(sign_change_degree))
-                })
+                # Convert to datetime with error handling
+                try:
+                    jd_to_dt = swe.jdut1_to_utc(jd_change)
+                    if len(jd_to_dt) < 6:
+                        continue
+                        
+                    transit_time = datetime(
+                        int(jd_to_dt[0]), int(jd_to_dt[1]), int(jd_to_dt[2]), 
+                        int(jd_to_dt[3]), int(jd_to_dt[4]), int(jd_to_dt[5])
+                    )
+                    
+                    # Convert to IST
+                    ist_time = transit_time + timedelta(hours=5, minutes=30)
+                    
+                    transits.append({
+                        "time": ist_time,
+                        "planet": planet_name,
+                        "type": "Sign Change",
+                        "description": f"Enters {get_zodiac_sign(sign_change_degree)}",
+                        "market_impact": get_sign_change_impact(planet_name, get_zodiac_sign(sign_change_degree))
+                    })
+                except Exception as e:
+                    st.warning(f"Error converting JD to datetime for {planet_name}: {e}")
+                    continue
             
             # Check for station (retrograde/direct change)
             if (speed_start < 0 and speed_end > 0) or (speed_start > 0 and speed_end < 0):
@@ -140,6 +172,7 @@ def calculate_planetary_transits(selected_date, tehran_time):
                 })
                 
         except Exception as e:
+            st.warning(f"Error calculating transit for {planet_name}: {e}")
             continue
     
     # Sort transits by time
@@ -319,7 +352,7 @@ def get_planetary_hour_ruler(hour_number, base_date):
     day_ruler_index = (base_date.weekday() + 1) % 7  # Sunday=0, Monday=1, etc.
     
     # Calculate hour ruler
-    hour_ruler_index = (day_ruler_index + hour_number) % 7
+    hour_ruler_index = int((day_ruler_index + hour_number) % 7)
     return planets[hour_ruler_index]
 
 def get_planetary_hour_impact(planet):
