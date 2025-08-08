@@ -3,7 +3,10 @@ import swisseph as swe
 from datetime import datetime, timedelta
 import time
 
-# Cache the planetary position calculations to avoid recomputing
+# Initialize ephemeris path at the module level
+swe.set_ephe_path(None)  # Use default ephemeris path
+
+# Cache the planetary position calculations
 @st.cache_data
 def get_planet_positions(julian_day):
     """Calculate and cache planetary positions"""
@@ -99,21 +102,6 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
     venus_resistance = planet_data["Venus"]["longitude"] * 20.02 * price_scale
     mars_saturn_resistance = mars_saturn_angle * 19.05 * price_scale
     
-    resistance_levels = [
-        {
-            "method": "Venus Longitude",
-            "calculation": f"{planet_data['Venus']['longitude']:.2f}° × {20.02 * price_scale:.2f}",
-            "level": venus_resistance,
-            "distance": venus_resistance - current_price
-        },
-        {
-            "method": "Mars-Saturn Angle",
-            "calculation": f"{mars_saturn_angle:.2f}° × {19.05 * price_scale:.2f}",
-            "level": mars_saturn_resistance,
-            "distance": mars_saturn_resistance - current_price
-        }
-    ]
-    
     # Pre-calculate values for trading strategy
     is_mars_saturn_above = mars_saturn_resistance > current_price
     price_diff = abs(mars_saturn_resistance - current_price)
@@ -167,17 +155,20 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
         
         report += f"""
 | {name:<10} | {data['longitude']:>8.2f}°   | {data['latitude']:>8.2f}°   | {data['distance']:>13.3f}     | {data['speed']:>13.4f} | {significance} |"""
+    
+    # Resistance levels section
     report += f"""
 ---
 ### 💰 {symbol} Resistance Levels (Current Price: ${current_price})
 | Method               | Calculation                     | Resistance Level | Distance to Current Price |
-|----------------------|---------------------------------|------------------|----------------------------|"""
-    for level in resistance_levels:
-        distance_direction = "above" if level['distance'] > 0 else "below"
-        report += f"""
-| {level['method']:<20} | {level['calculation']:<30} | ${level['level']:<15.2f} | {level['distance']:+.2f} ({distance_direction}) |"""
-    report += f"""
+|----------------------|---------------------------------|------------------|----------------------------|
+| Venus Longitude      | {planet_data['Venus']['longitude']:.2f}° × {20.02 * price_scale:.2f} | ${venus_resistance:<15.2f} | {venus_resistance - current_price:+.2f} ({'above' if venus_resistance > current_price else 'below'}) |
+| Mars-Saturn Angle    | {mars_saturn_angle:.2f}° × {19.05 * price_scale:.2f} | ${mars_saturn_resistance:<15.2f} | {mars_saturn_resistance - current_price:+.2f} ({'above' if mars_saturn_resistance > current_price else 'below'}) |
 | Current Price        | Market data                     | ${current_price:<15.2f} | Reference point            |
+"""
+    
+    # Aspects section
+    report += f"""
 ---
 ### 🔍 Key Planetary Aspects (IST)
 | Aspect                | Planets Involved | Angle (°) | Orb (°) | {symbol} Impact at ${current_price} |
@@ -185,6 +176,8 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
     for aspect in aspects:
         report += f"""
 | {aspect['type']:<20} | {aspect['planets']:<16} | {aspect['angle']:>8.2f}°   | {aspect['orb']:>7.2f}°   | {aspect['impact']} |"""
+    
+    # Time windows section
     report += f"""
 ---
 ### ⏱️ Critical Time Windows (IST)
@@ -194,6 +187,10 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
 | {(ist_time + timedelta(minutes=30)).strftime('%H:%M')}-{(ist_time + timedelta(hours=1)).strftime('%H:%M')} | Mars-Saturn Opposition  | Rejection at ${mars_saturn_resistance:.2f} | ${price_diff:.2f} {'below' if is_mars_saturn_above else 'above'} |
 | {(ist_time + timedelta(hours=1)).strftime('%H:%M')}-{(ist_time + timedelta(hours=2)).strftime('%H:%M')} | Moon-Uranus Tension      | High volatility        | Avoid new positions    |
 | {(ist_time + timedelta(hours=2)).strftime('%H:%M')}-{(ist_time + timedelta(hours=3)).strftime('%H:%M')} | Venus-Jupiter Influence | Short-term bounce      | Potential recovery     |
+"""
+    
+    # Trading strategy section
+    report += f"""
 ---
 ### 📊 Trading Strategy for {symbol} (${current_price})
 #### Primary Signal: Mars-Saturn Opposition
@@ -211,11 +208,19 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
    - Use wider stop-losses
 3. **Venus-Jupiter Bounce** ({(ist_time + timedelta(hours=2)).strftime('%H:%M')}-{(ist_time + timedelta(hours=3)).strftime('%H:%M')} IST):
    - If {symbol} holds ${current_price - 10 * price_scale:.2f}, consider {'longs' if venus_jupiter_orb < 2 else 'shorts'} with target ${venus_jupiter_target:.2f}
+"""
+    
+    # Lunar influence section
+    report += f"""
 ---
 ### 🌙 Lunar Influence
 - **Moon Position**: {planet_data['Moon']['longitude']:.2f}° ({moon_sign})
 - **Effect**: Amplifies algorithmic trading
 - **Recommendation**: Monitor volume spikes at ${mars_saturn_resistance - 3 * price_scale:.2f}-${mars_saturn_resistance + 3 * price_scale:.2f}
+"""
+    
+    # Risk factors section
+    report += f"""
 ---
 ### ⚠️ Critical Risk Factors
 1. **Mars-Saturn Opposition** ({mars_saturn_angle:.2f}°):
@@ -227,6 +232,10 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
 3. **Current Price Context**:
    - ${current_price} is {'dangerously close to' if price_diff < 20 * price_scale else 'within normal range of'} ${mars_saturn_resistance:.2f} resistance
    - Break {'above' if is_mars_saturn_above else 'below'} ${mars_saturn_resistance:.2f} could trigger {'short squeeze' if is_mars_saturn_above else 'liquidation cascade'} to ${squeeze_target:.2f}
+"""
+    
+    # Price scenarios section
+    report += f"""
 ---
 ### 📈 Price Action Scenarios
 | Scenario       | Probability | Target Price | Action Required |
@@ -234,6 +243,10 @@ def generate_financial_astronomy_report(symbol, current_price, tehran_time=None)
 | {'Rejection' if is_mars_saturn_above else 'Breakout'} | {rejection_prob}% | ${rejection_target:.2f} | {'Sell' if is_mars_saturn_above else 'Buy'} at ${entry_price:.2f} |
 | {'Breakout' if is_mars_saturn_above else 'Rejection'} | {breakout_prob}% | ${breakout_target:.2f} | {'Buy' if is_mars_saturn_above else 'Sell'} {'above' if is_mars_saturn_above else 'below'} ${mars_saturn_resistance:.2f} |
 | Sideways       | 30%         | ${range_low:.2f}-${range_high:.2f} | Range trading   |
+"""
+    
+    # Key insight section
+    report += f"""
 ---
 ### 💡 Key Insight for Today
 The Mars-Saturn opposition at ${mars_saturn_resistance:.2f} is the dominant force today, overriding Venus's normally bullish influence. With {symbol} at ${current_price} (only ${price_diff:.2f} {'below' if is_mars_saturn_above else 'above'} resistance), traders should:
@@ -247,12 +260,18 @@ The Mars-Saturn opposition at ${mars_saturn_resistance:.2f} is the dominant forc
     return report
 
 # Streamlit app interface
+st.set_page_config(layout="wide", page_title="Financial Astrology Report")
+
 st.title("Financial Astrology Report Generator")
 st.write("Enter a trading symbol and current price to generate a financial astrology report.")
 
-# User inputs
-symbol = st.text_input("Trading Symbol (e.g., Gold, Silver, BTC)", value="BTC")
-current_price = st.number_input("Current Price ($)", min_value=0.01, value=64250.0, step=0.01)
+# User inputs in columns for better layout
+col1, col2 = st.columns(2)
+with col1:
+    symbol = st.text_input("Trading Symbol (e.g., Gold, Silver, BTC)", value="BTC")
+with col2:
+    current_price = st.number_input("Current Price ($)", min_value=0.01, value=64250.0, step=0.01)
+
 tehran_time_str = st.text_input("Tehran Time (YYYY-MM-DD HH:MM:SS, optional)", value="2025-08-08 11:12:10")
 
 # Parse Tehran time
@@ -270,8 +289,8 @@ if st.button("Generate Report"):
             start_time = time.time()
             report = generate_financial_astronomy_report(symbol, current_price, tehran_time)
             elapsed_time = time.time() - start_time
-            st.success(f"Report generated in {elapsed_time:.2f} seconds")
-        
+            
+        st.success(f"Report generated in {elapsed_time:.2f} seconds")
         st.markdown(report)
         
         # Add chart for resistance levels
@@ -292,13 +311,17 @@ if st.button("Generate Report"):
                 }]
             },
             "options": {
+                "responsive": True,
                 "scales": {
                     "y": {"beginAtZero": True, "title": {"display": True, "text": "Price ($)"}},
                     "x": {"title": {"display": True, "text": "Level"}}
                 }
             }
         }
+        
         st.markdown("### Resistance Levels Chart")
         st.markdown(f"```chartjs\n{chart_data}\n```")
+        
     except Exception as e:
         st.error(f"Error generating report: {str(e)}")
+        st.exception(e)
