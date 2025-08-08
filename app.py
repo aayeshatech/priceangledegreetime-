@@ -60,116 +60,102 @@ def get_zodiac_sign(longitude):
     return signs[int(longitude // 30)]
 
 def calculate_planetary_price_levels(planet_data, current_price, symbol):
-    """Calculate realistic market-based planetary price levels"""
+    """Calculate realistic intraday price levels based on actual planetary positions"""
     price_levels = {}
     
-    # Use real market volatility for Indian indices
-    if "NIFTY" in symbol.upper() or "BANK" in symbol.upper():
-        base_volatility = 0.5  # Nifty typically moves 0.5-2% intraday
-    else:
-        base_volatility = 1.0
+    # Real market-based percentage ranges for each planet (more realistic spreads)
+    planet_ranges = {
+        "Sun": {"major": 1.8, "primary": 0.9, "minor": 0.25},      
+        "Moon": {"major": 3.2, "primary": 1.6, "minor": 0.45},    # More volatile
+        "Mercury": {"major": 1.5, "primary": 0.7, "minor": 0.2},  
+        "Venus": {"major": 2.1, "primary": 1.1, "minor": 0.35},   
+        "Mars": {"major": 4.2, "primary": 2.1, "minor": 0.65},    # Most aggressive
+        "Jupiter": {"major": 3.8, "primary": 1.9, "minor": 0.55}, # Strong levels
+        "Saturn": {"major": 2.9, "primary": 1.45, "minor": 0.4}, 
+        "Uranus": {"major": 5.5, "primary": 2.7, "minor": 0.8},   # Most volatile
+        "Neptune": {"major": 2.5, "primary": 1.25, "minor": 0.35},
+        "Pluto": {"major": 3.5, "primary": 1.75, "minor": 0.5}    
+    }
     
     for planet_name, data in planet_data.items():
         if planet_name in PLANETARY_CYCLES:
-            # Calculate planetary degree influence on price
-            degree = data["longitude"] % 360
+            ranges = planet_ranges.get(planet_name, {"major": 2.0, "primary": 1.0, "minor": 0.3})
+            
+            # Calculate unique planetary influence based on actual degree position
+            longitude = data["longitude"] % 360
             speed = abs(data["speed"])
             
-            # Real market-based level calculation
-            if planet_name == "Moon":
-                # Moon creates support/resistance every ~50-100 points for Nifty
-                level_spacing = current_price * 0.002  # 0.2% spacing
-                base_level = int((current_price / level_spacing)) * level_spacing
-                moon_influence = math.sin(math.radians(degree * 2)) * level_spacing * 2
-                
-                levels = {
-                    "Major_Resistance": base_level + (level_spacing * 4) + moon_influence,
-                    "Primary_Resistance": base_level + (level_spacing * 2) + moon_influence,
-                    "Minor_Resistance": base_level + level_spacing + moon_influence,
-                    "Current_Level": base_level + moon_influence,
-                    "Minor_Support": base_level - level_spacing + moon_influence,
-                    "Primary_Support": base_level - (level_spacing * 2) + moon_influence,
-                    "Major_Support": base_level - (level_spacing * 4) + moon_influence
-                }
-                
-            elif planet_name == "Mars":
-                # Mars creates aggressive breakout levels
-                mars_base = current_price
-                mars_range = current_price * 0.015 * (1 + speed/10)  # 1.5% base range
-                mars_cycle = math.cos(math.radians(degree))
-                
-                levels = {
-                    "Major_Resistance": mars_base + (mars_range * 2) + (mars_cycle * mars_range),
-                    "Primary_Resistance": mars_base + mars_range + (mars_cycle * mars_range * 0.5),
-                    "Minor_Resistance": mars_base + (mars_range * 0.5) + (mars_cycle * mars_range * 0.3),
-                    "Current_Level": mars_base + (mars_cycle * mars_range * 0.2),
-                    "Minor_Support": mars_base - (mars_range * 0.5) + (mars_cycle * mars_range * 0.3),
-                    "Primary_Support": mars_base - mars_range + (mars_cycle * mars_range * 0.5),
-                    "Major_Support": mars_base - (mars_range * 2) + (mars_cycle * mars_range)
-                }
-                
-            elif planet_name == "Jupiter":
-                # Jupiter creates major support zones
-                jupiter_base = current_price
-                jupiter_range = current_price * 0.01  # 1% range
-                jupiter_harmony = math.sin(math.radians(degree / 3)) * jupiter_range
-                
-                levels = {
-                    "Major_Resistance": jupiter_base + (jupiter_range * 3) + jupiter_harmony,
-                    "Primary_Resistance": jupiter_base + (jupiter_range * 1.5) + jupiter_harmony,
-                    "Minor_Resistance": jupiter_base + (jupiter_range * 0.7) + jupiter_harmony,
-                    "Current_Level": jupiter_base + jupiter_harmony,
-                    "Minor_Support": jupiter_base - (jupiter_range * 0.7) + jupiter_harmony,
-                    "Primary_Support": jupiter_base - (jupiter_range * 1.5) + jupiter_harmony,
-                    "Major_Support": jupiter_base - (jupiter_range * 3) + jupiter_harmony
-                }
-                
-            elif planet_name == "Venus":
-                # Venus creates value-based levels
-                venus_base = current_price  
-                venus_range = current_price * 0.008  # 0.8% range
-                venus_value = math.sin(math.radians(degree * 1.5)) * venus_range
-                
-                levels = {
-                    "Major_Resistance": venus_base + (venus_range * 2.5) + venus_value,
-                    "Primary_Resistance": venus_base + (venus_range * 1.2) + venus_value,
-                    "Minor_Resistance": venus_base + (venus_range * 0.6) + venus_value,
-                    "Current_Level": venus_base + venus_value,
-                    "Minor_Support": venus_base - (venus_range * 0.6) + venus_value,
-                    "Primary_Support": venus_base - (venus_range * 1.2) + venus_value,
-                    "Major_Support": venus_base - (venus_range * 2.5) + venus_value
-                }
-                
-            else:
-                # Other planets - standard calculation
-                planet_range = current_price * base_volatility * 0.01
-                planet_influence = math.sin(math.radians(degree)) * planet_range
-                
-                levels = {
-                    "Major_Resistance": current_price + (planet_range * 2) + planet_influence,
-                    "Primary_Resistance": current_price + planet_range + planet_influence,
-                    "Minor_Resistance": current_price + (planet_range * 0.5) + planet_influence,
-                    "Current_Level": current_price + planet_influence,
-                    "Minor_Support": current_price - (planet_range * 0.5) + planet_influence,
-                    "Primary_Support": current_price - planet_range + planet_influence,
-                    "Major_Support": current_price - (planet_range * 2) + planet_influence
-                }
+            # Create unique multipliers for each planet based on their position
+            planet_multipliers = {
+                "Sun": longitude / 360,
+                "Moon": (longitude + 90) / 360,      # Offset by 90°
+                "Mercury": (longitude + 45) / 360,    # Offset by 45°  
+                "Venus": (longitude + 135) / 360,     # Offset by 135°
+                "Mars": (longitude + 180) / 360,      # Opposite to Sun
+                "Jupiter": (longitude + 225) / 360,   # Offset by 225°
+                "Saturn": (longitude + 270) / 360,    # Offset by 270°
+                "Uranus": (longitude + 315) / 360,    # Offset by 315°
+                "Neptune": (longitude + 60) / 360,    # Offset by 60°
+                "Pluto": (longitude + 120) / 360      # Offset by 120°
+            }
             
-            # Round to nearest 5 for cleaner levels (Nifty moves in 5-point increments)
-            for level_name in levels:
-                levels[level_name] = round(levels[level_name] / 5) * 5
+            # Get unique multiplier for this planet
+            base_multiplier = planet_multipliers.get(planet_name, longitude / 360)
             
-            # Calculate strength based on planetary speed and degree position
-            strength = 50 + (speed * 15) + (abs(math.sin(math.radians(degree))) * 30)
-            strength = min(strength, 100)
+            # Add speed influence (faster planets = stronger immediate impact)
+            speed_influence = min(speed * 5, 30) / 100  # 0 to 30% additional influence
+            
+            # Combine influences
+            total_multiplier = 0.6 + (0.8 * base_multiplier) + speed_influence  # Range: 0.6 to 1.4
+            
+            # Apply directional bias based on planet characteristics
+            directional_bias = {
+                "Sun": 0,        # Neutral 
+                "Moon": -0.2,    # Slightly bearish (emotional selling)
+                "Mercury": 0.1,  # Slightly bullish (news driven)
+                "Venus": 0.15,   # Bullish (value attraction)
+                "Mars": -0.3,    # Bearish (aggressive selling)
+                "Jupiter": 0.25, # Most bullish (expansion)
+                "Saturn": -0.4,  # Most bearish (restriction)
+                "Uranus": 0,     # Neutral but volatile
+                "Neptune": -0.1, # Slightly bearish (confusion)
+                "Pluto": 0.05    # Slightly bullish (transformation)
+            }
+            
+            bias = directional_bias.get(planet_name, 0)
+            
+            # Calculate adjusted ranges with planetary bias
+            major_pct = ranges["major"] * total_multiplier
+            primary_pct = ranges["primary"] * total_multiplier
+            minor_pct = ranges["minor"] * total_multiplier
+            
+            # Apply directional bias to create asymmetric levels
+            resistance_multiplier = 1.0 - bias  # Negative bias = stronger resistance
+            support_multiplier = 1.0 + bias     # Positive bias = stronger support
+            
+            # Calculate actual price levels with realistic spreads
+            levels = {
+                "Major_Resistance": current_price * (1 + (major_pct * resistance_multiplier)/100),
+                "Primary_Resistance": current_price * (1 + (primary_pct * resistance_multiplier)/100),
+                "Minor_Resistance": current_price * (1 + (minor_pct * resistance_multiplier)/100),
+                "Current_Level": current_price,
+                "Minor_Support": current_price * (1 - (minor_pct * support_multiplier)/100),
+                "Primary_Support": current_price * (1 - (primary_pct * support_multiplier)/100),
+                "Major_Support": current_price * (1 - (major_pct * support_multiplier)/100)
+            }
+            
+            # Calculate planetary strength (0-100%)
+            strength = 30 + (speed * 15) + ((360 - (longitude % 30)) / 30 * 25) + (total_multiplier * 30)
             
             price_levels[planet_name] = {
-                "current_degree": degree,
-                "speed": speed,
+                "current_degree": longitude,
+                "speed": data["speed"],
                 "sign": f"{data['sign']} {data['degree_in_sign']:.2f}°",
                 "levels": levels,
                 "influence": PLANETARY_CYCLES[planet_name]["influence"],
-                "strength": strength
+                "strength": min(max(strength, 10), 100),  # Bound between 10-100%
+                "bias": bias,
+                "multiplier": total_multiplier
             }
     
     return price_levels
@@ -506,7 +492,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         julian_day = swe.julday(utc_time.year, utc_time.month, utc_time.day, 
                                utc_time.hour + utc_time.minute/60 + utc_time.second/3600)
         
-    planet_data = get_planetary_positions_today(julian_day)
+        planet_data = get_planetary_positions_today(julian_day)
         if not planet_data:
             st.error("Failed to get planetary data")
             return None, None, None, None, None, None, None
@@ -514,10 +500,6 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         price_levels = calculate_planetary_price_levels(planet_data, current_price, symbol)
         daily_cycles = calculate_todays_time_cycles(planet_data, ist_time)
         intraday_levels = calculate_intraday_support_levels(current_price, planet_data, ist_time)
-        
-        # Detect support/resistance breaks and find nearest levels
-        breaks, key_levels = detect_support_resistance_breaks(price_levels, current_price, symbol)
-        nearest_support, nearest_resistance = find_nearest_support_resistance(price_levels, current_price)
         
         # Ensure all data structures are valid
         if not price_levels:
@@ -732,11 +714,11 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 > **🚨 Next Major Event**: {next_event_text}
 """
         
-        return report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times, breaks, nearest_support, nearest_resistance
+        return report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times
         
     except Exception as e:
         st.error(f"Error generating report: {e}")
-        return None, None, None, None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None
 
 # Streamlit App
 st.set_page_config(layout="wide", page_title="Daily Planetary Cycles")
@@ -751,7 +733,7 @@ with col1:
     symbol = st.text_input("Symbol", value="NIFTY", help="Trading symbol (NIFTY, BANKNIFTY, etc.)")
     
 with col2:
-    current_price = st.number_input("Current Price", value=24337.0, step=0.1, help="Current market price (e.g., Nifty low 24,337)")
+    current_price = st.number_input("Current Price", value=24594.0, step=0.1, help="Current market price")
 
 with col3:
     default_time = datetime.now()
@@ -776,81 +758,6 @@ if st.button("🚀 Generate Today's Report", type="primary"):
             elapsed_time = time.time() - start_time
             
         st.success(f"✅ Report generated in {elapsed_time:.2f} seconds")
-        
-        # PRIORITY ALERTS - Support/Resistance Breaks
-        if breaks:
-            st.markdown("### 🚨 URGENT TRADING ALERTS")
-            for break_info in breaks[:3]:  # Top 3 most important breaks
-                alert_color = "#ff4444" if "MAJOR" in break_info["alert"] else "#ff8800"
-                
-                st.markdown(f"""
-                <div style="background-color:#fff0f0; padding:15px; border-radius:8px; margin:10px 0; border-left:5px solid {alert_color};">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                <h4 style="margin:0; color:{alert_color};">{break_info['alert']}</h4>
-                <p style="margin:5px 0; font-size:1.1em;">
-                <strong>Broken Level:</strong> {break_info['level_price']:,.0f} | 
-                <strong>Current:</strong> {break_info['current_price']:,.0f} | 
-                <strong>Break:</strong> {break_info['break_distance']:,.0f} pts ({break_info['break_pct']:.2f}%)
-                </p>
-                <p style="margin:5px 0; color:#666; font-size:1em;"><strong>{break_info['action']}</strong></p>
-                </div>
-                </div>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # NEAREST LEVELS - Quick Reference  
-        st.markdown("### 🎯 IMMEDIATE SUPPORT/RESISTANCE")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if nearest_support:
-                support_color = "#28a745" if nearest_support['distance_pct'] <= 2.0 else "#6c757d"
-                st.markdown(f"""
-                <div style="background-color:#e6f7e6; padding:15px; border-radius:8px; border:2px solid {support_color};">
-                <h5 style="margin:0; color:{support_color};">🟢 NEAREST SUPPORT</h5>
-                <h3 style="margin:5px 0; color:{support_color};">{nearest_support['price']:,.0f}</h3>
-                <p style="margin:0; font-size:0.9em;">
-                {nearest_support['planet']} {nearest_support['level_name']}<br>
-                -{nearest_support['distance']:,.0f} pts (-{nearest_support['distance_pct']:.2f}%)<br>
-                Strength: {nearest_support['strength']:.0f}%
-                </p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.info("No immediate support")
-        
-        with col2:
-            # Current Price
-            st.markdown(f"""
-            <div style="background-color:#fff3cd; padding:15px; border-radius:8px; border:2px solid #ffc107;">
-            <h5 style="margin:0; color:#856404;">📊 CURRENT PRICE</h5>
-            <h3 style="margin:5px 0; color:#856404;">{current_price:,.0f}</h3>
-            <p style="margin:0; font-size:0.9em;">
-            {symbol} Live Price<br>
-            IST: {ist_time.strftime('%H:%M:%S')}<br>
-            Trading Range Active
-            </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col3:
-            if nearest_resistance:
-                resist_color = "#dc3545" if nearest_resistance['distance_pct'] <= 2.0 else "#6c757d"
-                st.markdown(f"""
-                <div style="background-color:#ffe6e6; padding:15px; border-radius:8px; border:2px solid {resist_color};">
-                <h5 style="margin:0; color:{resist_color};">🔴 NEAREST RESISTANCE</h5>
-                <h3 style="margin:5px 0; color:{resist_color};">{nearest_resistance['price']:,.0f}</h3>
-                <p style="margin:0; font-size:0.9em;">
-                {nearest_resistance['planet']} {nearest_resistance['level_name']}<br>
-                +{nearest_resistance['distance']:,.0f} pts (+{nearest_resistance['distance_pct']:.2f}%)<br>
-                Strength: {nearest_resistance['strength']:.0f}%
-                </p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.info("No immediate resistance")
         
         # Display main report
         st.markdown(report)
