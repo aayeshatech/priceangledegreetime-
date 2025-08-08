@@ -1,4 +1,41 @@
-import streamlit as st
+# Add immediate trading opportunities
+    immediate_levels = []
+    for planet_name, data in price_levels.items():
+        levels = data["levels"]
+        for level_name, level_price in levels.items():
+            if level_name not in ["Current_Level"]:
+                distance_pct = abs((level_price - current_price) / current_price) * 100
+                if distance_pct <= 3.0:  # Within 3% - good for intraday
+                    immediate_levels.append({
+                        "planet": planet_name,
+                        "level_name": level_name,
+                        "price": level_price,
+                        "distance": level_price - current_price,
+                        "distance_pct": distance_pct,
+                        "strength": data["strength"]
+                    })
+    
+    immediate_levels.sort(key=lambda x: abs(x["distance"]))
+    
+    if immediate_levels:
+        report += f"""
+
+---
+
+## 🎯 Immediate Trading Opportunities (Within 3% Range)
+
+| Planet Level | Price | Distance | % Move | Strength | Action |
+|--------------|-------|----------|--------|----------|--------|"""
+        
+        for level in immediate_levels[:8]:  # Top 8 closest levels
+            action = "🚀 BUY ZONE" if level["distance"] < 0 else "🛑 SELL ZONE"
+            if abs(level["distance_pct"]) <= 1.0:
+                action = "⚡ PRIME TARGET"
+            
+            level_display = level["level_name"].replace("_", " ")
+            
+            report += f"""
+| {level['planet']} {level_display} | {level['price']:,.0f} | {level['distance']:+.0f} | {level['distance_pct']:+.2f}% | {level['strength']:.0f}% | {action} |"""import streamlit as st
 import swisseph as swe
 from datetime import datetime, timedelta
 import time
@@ -61,30 +98,46 @@ def get_zodiac_sign(longitude):
     return signs[int(longitude // 30)]
 
 def calculate_planetary_price_levels(planet_data, current_price, symbol):
-    """Calculate specific price levels for each planet including intraday levels"""
-    price_scale = max(1, current_price / 1000)  # Dynamic scaling
+    """Calculate realistic intraday price levels for each planet"""
     price_levels = {}
+    
+    # Define intraday percentage ranges based on planet characteristics
+    planet_ranges = {
+        "Sun": {"major": 2.0, "primary": 1.0, "minor": 0.3},      # 2%, 1%, 0.3%
+        "Moon": {"major": 3.0, "primary": 1.5, "minor": 0.5},     # 3%, 1.5%, 0.5% 
+        "Mercury": {"major": 1.8, "primary": 0.8, "minor": 0.25}, # 1.8%, 0.8%, 0.25%
+        "Venus": {"major": 2.5, "primary": 1.2, "minor": 0.4},    # 2.5%, 1.2%, 0.4%
+        "Mars": {"major": 3.5, "primary": 1.8, "minor": 0.6},     # 3.5%, 1.8%, 0.6%
+        "Jupiter": {"major": 4.0, "primary": 2.0, "minor": 0.7},  # 4%, 2%, 0.7%
+        "Saturn": {"major": 2.8, "primary": 1.4, "minor": 0.45},  # 2.8%, 1.4%, 0.45%
+        "Uranus": {"major": 5.0, "primary": 2.5, "minor": 0.8},   # 5%, 2.5%, 0.8%
+        "Neptune": {"major": 3.2, "primary": 1.6, "minor": 0.5},  # 3.2%, 1.6%, 0.5%
+        "Pluto": {"major": 4.5, "primary": 2.2, "minor": 0.75}    # 4.5%, 2.2%, 0.75%
+    }
     
     for planet_name, data in planet_data.items():
         if planet_name in PLANETARY_CYCLES:
             cycle_info = PLANETARY_CYCLES[planet_name]
-            base_price = (data["longitude"] * cycle_info["price_multiplier"] * price_scale) % (current_price * 2)
+            ranges = planet_ranges.get(planet_name, {"major": 2.0, "primary": 1.0, "minor": 0.3})
             
-            # Ensure base_price is within reasonable range of current price
-            while base_price < current_price * 0.7:
-                base_price += current_price * 0.1
-            while base_price > current_price * 1.3:
-                base_price -= current_price * 0.1
+            # Calculate planetary influence modifier based on current degree position
+            degree_mod = (data["longitude"] % 360) / 360  # 0 to 1
+            influence_multiplier = 0.7 + (0.6 * degree_mod)  # 0.7 to 1.3 range
             
-            # Calculate multiple levels for each planet including intraday micro-levels
+            # Adjust ranges based on planetary influence
+            major_pct = ranges["major"] * influence_multiplier
+            primary_pct = ranges["primary"] * influence_multiplier  
+            minor_pct = ranges["minor"] * influence_multiplier
+            
+            # Calculate actual price levels
             levels = {
-                "Major_Resistance": base_price * 1.08,
-                "Primary_Resistance": base_price * 1.03,
-                "Minor_Resistance": base_price * 1.015,
-                "Current_Level": base_price,
-                "Minor_Support": base_price * 0.985,
-                "Primary_Support": base_price * 0.97,
-                "Major_Support": base_price * 0.92
+                "Major_Resistance": current_price * (1 + major_pct/100),
+                "Primary_Resistance": current_price * (1 + primary_pct/100),
+                "Minor_Resistance": current_price * (1 + minor_pct/100),
+                "Current_Level": current_price,
+                "Minor_Support": current_price * (1 - minor_pct/100),
+                "Primary_Support": current_price * (1 - primary_pct/100),
+                "Major_Support": current_price * (1 - major_pct/100)
             }
             
             price_levels[planet_name] = {
@@ -94,7 +147,12 @@ def calculate_planetary_price_levels(planet_data, current_price, symbol):
                 "levels": levels,
                 "influence": cycle_info["influence"],
                 "cycle_hours": cycle_info["cycle_hours"],
-                "strength": calculate_planetary_strength(data, current_price)
+                "strength": calculate_planetary_strength(data, current_price),
+                "range_pct": {
+                    "major": f"±{major_pct:.1f}%",
+                    "primary": f"±{primary_pct:.1f}%", 
+                    "minor": f"±{minor_pct:.1f}%"
+                }
             }
     
     return price_levels
@@ -318,17 +376,21 @@ def get_price_effect(planet, degree):
     return closest_match or "±0.5% to ±1.5%"
 
 def calculate_intraday_support_levels(current_price, planet_data):
-    """Calculate intraday micro support/resistance levels"""
+    """Calculate realistic intraday micro support/resistance levels"""
     levels = []
     
     # Moon-based intraday levels (every 15 degrees = ~1.2 hours)
     moon_deg = planet_data["Moon"]["longitude"]
     moon_speed = planet_data["Moon"]["speed"]
     
-    for i in range(0, 360, 15):  # Every 15 degrees
+    # Create levels every 15 degrees (1.2 hour cycles)
+    for i in range(0, 360, 15):  
         hours_to_degree = ((i - moon_deg) % 360) / (moon_speed / 24) if moon_speed != 0 else 999
         if 0 <= hours_to_degree <= 12:  # Next 12 hours only
-            level_price = current_price + (i - moon_deg) * 0.8
+            # Calculate price level as small percentage of current price
+            degree_influence = math.sin(math.radians(i)) * 0.8  # -0.8% to +0.8%
+            level_price = current_price * (1 + degree_influence/100)
+            
             levels.append({
                 "time_hours": hours_to_degree,
                 "degree": i,
@@ -337,31 +399,53 @@ def calculate_intraday_support_levels(current_price, planet_data):
                 "strength": "Intraday"
             })
     
-    # Mercury-based news levels
+    # Mercury-based news levels (smaller moves)
     mercury_deg = planet_data["Mercury"]["longitude"]
     for angle in [0, 30, 45, 60, 90, 120, 135, 150, 180]:
-        price_adj = (angle - mercury_deg) * 0.5
-        levels.append({
-            "time_hours": angle / 15,  # Approximate
-            "degree": angle,
-            "price": current_price + price_adj,
-            "type": "News Level",
-            "strength": "Moderate"
-        })
+        hours_approx = angle / 15  # Approximate timing
+        if hours_approx <= 12:
+            price_influence = math.cos(math.radians(angle - mercury_deg)) * 0.4  # ±0.4%
+            level_price = current_price * (1 + price_influence/100)
+            
+            levels.append({
+                "time_hours": hours_approx,
+                "degree": angle,
+                "price": level_price,
+                "type": "News Level",
+                "strength": "Moderate"
+            })
     
-    # Venus-based value levels  
+    # Venus-based value levels (harmony points)
     venus_deg = planet_data["Venus"]["longitude"]
-    for angle in [0, 30, 60, 90, 120, 150, 180]:
-        price_adj = (angle - venus_deg) * 1.2
+    for angle in [0, 60, 120, 180, 240, 300]:
+        hours_approx = angle / 12  # Approximate timing
+        if hours_approx <= 12:
+            harmony_influence = math.sin(math.radians(angle - venus_deg + 60)) * 0.6  # ±0.6%
+            level_price = current_price * (1 + harmony_influence/100)
+            
+            levels.append({
+                "time_hours": hours_approx,
+                "degree": angle, 
+                "price": level_price,
+                "type": "Value Zone",
+                "strength": "Strong"
+            })
+    
+    # Add some immediate scalping levels (next 4 hours)
+    for hour in range(1, 5):
+        # Quick Moon influence
+        moon_effect = math.sin(hour * math.pi / 6) * 0.3  # ±0.3% every hour
+        scalp_price = current_price * (1 + moon_effect/100)
+        
         levels.append({
-            "time_hours": angle / 10,  # Approximate
-            "degree": angle,
-            "price": current_price + price_adj,
-            "type": "Value Zone",
-            "strength": "Strong"
+            "time_hours": hour,
+            "degree": hour * 15,
+            "price": scalp_price,
+            "type": "Scalp Level",
+            "strength": "Quick"
         })
     
-    return sorted(levels, key=lambda x: x["time_hours"])[:15]  # Top 15 intraday levels
+    return sorted(levels, key=lambda x: x["time_hours"])[:20]  # Top 20 intraday levels
 
 def generate_daily_planetary_report(symbol, current_price, tehran_time):
     """Generate focused daily planetary cycles report"""
@@ -380,45 +464,52 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
     
     # Generate report
     report = f"""
-# 🌟 Daily Planetary Cycles & Price Levels Report
+# 🌟 Daily Planetary Cycles & Intraday Price Levels Report
 ## {symbol} Trading - {tehran_time.strftime('%Y-%m-%d')}
 
-### ⏰ Time Base
+### ⏰ Time Base (All times in IST - Indian Standard Time)
 - **Tehran Time**: {tehran_time.strftime('%H:%M:%S')} 🇮🇷
 - **Indian Standard Time**: **{ist_time.strftime('%H:%M:%S')}** 🇮🇳  
-- **Current {symbol} Price**: **${current_price:,.2f}**
+- **Current {symbol} Price**: **{current_price:,.0f}**
 
 ---
 
-## 🎯 Today's Planetary Price Levels & Multi-Layer Support/Resistance
+## 🎯 Today's Planetary Intraday Levels (Perfect for Day Trading)
 
-| Planet | Position | Major Resist | Minor Resist | Current | Minor Support | Major Support | Strength |
-|--------|----------|--------------|--------------|---------|---------------|---------------|----------|"""
+| Planet | Position | Major Resist | Primary Resist | Minor Resist | Current | Minor Support | Primary Support | Major Support | Range |
+|--------|----------|--------------|----------------|--------------|---------|---------------|-----------------|---------------|-------|"""
     
     for planet_name, data in price_levels.items():
         levels = data["levels"]
-        strength = f"{data['strength']:.0f}%"
+        range_info = data["range_pct"]["primary"]
         
         report += f"""
-| **{planet_name}** | {data['sign']} | ${levels['Major_Resistance']:,.0f} | ${levels['Minor_Resistance']:,.0f} | ${levels['Current_Level']:,.0f} | ${levels['Minor_Support']:,.0f} | ${levels['Major_Support']:,.0f} | {strength} |"""
+| **{planet_name}** | {data['sign']} | {levels['Major_Resistance']:,.0f} | {levels['Primary_Resistance']:,.0f} | {levels['Minor_Resistance']:,.0f} | {levels['Current_Level']:,.0f} | {levels['Minor_Support']:,.0f} | {levels['Primary_Support']:,.0f} | {levels['Major_Support']:,.0f} | {range_info} |"""
 
-    # Intraday micro levels
+    # Intraday scalping levels
     report += f"""
 
 ---
 
-## 📊 Intraday Micro Support/Resistance Levels (Next 12 Hours)
+## ⚡ Intraday Scalping Levels (Next 12 Hours IST)
 
 | Time (IST) | Price Level | Type | Distance | Strength | Trading Signal |
 |------------|-------------|------|----------|----------|----------------|"""
     
-    for level in intraday_levels:
+    for level in intraday_levels[:15]:  # Show top 15 levels
         time_from_now = ist_time + timedelta(hours=level["time_hours"])
         distance = level["price"] - current_price
-        signal = "🔴 SELL ZONE" if distance > 20 else "🟡 MONITOR" if abs(distance) <= 20 else "🟢 BUY ZONE"
+        distance_pct = (distance / current_price) * 100
+        
+        if abs(distance_pct) <= 0.5:
+            signal = "🎯 PRIME SCALP"
+        elif distance > 0:
+            signal = "🔴 RESISTANCE" if abs(distance_pct) <= 2 else "🟡 WATCH HIGH"
+        else:
+            signal = "🟢 SUPPORT" if abs(distance_pct) <= 2 else "🟡 WATCH LOW"
         
         report += f"""
-| {time_from_now.strftime('%H:%M')} | ${level['price']:,.0f} | {level['type']} | {distance:+.0f} | {level['strength']} | {signal} |"""
+| {time_from_now.strftime('%H:%M')} | {level['price']:,.0f} | {level['type']} | {distance:+.0f} ({distance_pct:+.2f}%) | {level['strength']} | {signal} |"""
 
     # Today's critical time cycles
     if daily_cycles:
@@ -713,23 +804,25 @@ def create_planetary_timeline_chart(daily_cycles, current_time):
 # Streamlit App
 st.set_page_config(layout="wide", page_title="Daily Planetary Cycles")
 
-st.title("🌟 Daily Planetary Cycles & Multi-Level Support/Resistance")
-st.markdown("*Comprehensive daily report with planetary times, resistance levels, and intraday micro-levels*")
+st.title("🌟 Daily Planetary Cycles - Indian Intraday Trading")
+st.markdown("*Realistic support/resistance levels for Nifty, Bank Nifty & Indian markets - All times in IST*")
 
 # Input section
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    symbol = st.text_input("Symbol", value="GOLD", help="Trading symbol")
+    symbol = st.text_input("Symbol", value="NIFTY", help="Trading symbol (NIFTY, BANKNIFTY, GOLD, etc.)")
     
 with col2:
-    current_price = st.number_input("Current Price", value=3423.0, step=0.1, 
+    current_price = st.number_input("Current Price", value=24594.0, step=0.1, 
                                    help="Current market price")
 
 with col3:
-    tehran_time_input = st.text_input("Tehran Time", 
-                                     value="2025-08-08 17:07:10",
-                                     help="Format: YYYY-MM-DD HH:MM:SS")
+    # Default to current Indian time
+    default_time = datetime.now() + timedelta(hours=5, minutes=30)  # Convert to IST
+    tehran_time_input = st.text_input("Time (for Tehran base)", 
+                                     value=default_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                     help="Enter time - will convert to IST automatically")
 
 # Parse time
 try:
@@ -825,15 +918,56 @@ if st.button("🚀 Generate Today's Planetary Report", type="primary"):
                 st.markdown("#### 🎯 Key Price Levels")
                 levels_data = []
                 for planet, data in price_levels.items():
+                    resistance = data['levels']['Primary_Resistance'] 
+                    support = data['levels']['Primary_Support']
+                    
                     levels_data.append({
                         "Planet": planet,
-                        "Resistance": f"${data['levels']['Primary_Resistance']:,.0f}",
-                        "Support": f"${data['levels']['Primary_Support']:,.0f}",
+                        "Resistance": f"{resistance:,.0f} (+{((resistance/current_price-1)*100):+.1f}%)",
+                        "Support": f"{support:,.0f} ({((support/current_price-1)*100):+.1f}%)",
                         "Strength": f"{data['strength']:.0f}%"
                     })
                 
                 levels_df = pd.DataFrame(levels_data)
                 st.dataframe(levels_df, use_container_width=True)
+        
+        # Add immediate action summary
+        st.markdown("### 🎯 Today's Trading Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            # Nearest resistance
+            resistances = [(p, d['levels']['Primary_Resistance']) for p, d in price_levels.items() if d['levels']['Primary_Resistance'] > current_price]
+            if resistances:
+                nearest_res = min(resistances, key=lambda x: x[1])
+                distance_pct = ((nearest_res[1]/current_price - 1) * 100)
+                st.metric("🔴 Next Resistance", f"{nearest_res[1]:,.0f}", f"+{distance_pct:.1f}%")
+            
+        with col2:
+            # Nearest support  
+            supports = [(p, d['levels']['Primary_Support']) for p, d in price_levels.items() if d['levels']['Primary_Support'] < current_price]
+            if supports:
+                nearest_sup = max(supports, key=lambda x: x[1])
+                distance_pct = ((nearest_sup[1]/current_price - 1) * 100)
+                st.metric("🟢 Next Support", f"{nearest_sup[1]:,.0f}", f"{distance_pct:.1f}%")
+                
+        with col3:
+            # Strongest planet
+            strongest = max(price_levels.items(), key=lambda x: x[1]['strength'])
+            st.metric("💪 Strongest Influence", strongest[0], f"{strongest[1]['strength']:.0f}%")
+            
+        with col4:
+            # Trading range
+            all_levels = []
+            for data in price_levels.values():
+                all_levels.extend([data['levels']['Minor_Support'], data['levels']['Minor_Resistance']])
+            
+            range_low = min([l for l in all_levels if l < current_price], default=current_price*0.99)
+            range_high = max([l for l in all_levels if l > current_price], default=current_price*1.01) 
+            range_size = ((range_high - range_low) / current_price) * 100
+            
+            st.metric("📊 Intraday Range", f"{range_size:.1f}%", f"{range_low:,.0f} - {range_high:,.0f}")
         
     except Exception as e:
         st.error(f"❌ Error: {e}")
@@ -841,34 +975,56 @@ if st.button("🚀 Generate Today's Planetary Report", type="primary"):
 
 # Enhanced sidebar
 with st.sidebar:
-    st.markdown("### 🌟 Enhanced Features")
+    st.markdown("### 🇮🇳 For Indian Intraday Traders")
     st.markdown("""
-    **Multi-Layer Support/Resistance:**
-    - 🔴 Major levels (±8-10%)
-    - 🟡 Primary levels (±3-5%)  
-    - 🟢 Minor levels (±1-2%)
+    **Perfect for NSE/BSE Trading:**
+    - 🕘 All times in **IST (Indian Standard Time)**
+    - 📊 **Nifty/Bank Nifty** optimized levels
+    - ⚡ **Scalping levels** every 1-4 hours
+    - 🎯 **Intraday range**: ±0.3% to ±5%
     
-    **Intraday Micro Levels:**
-    - 🌙 Moon 15° cycles (~1.2h)
-    - ☿ Mercury news levels
-    - ♀ Venus value zones
-    
-    **Time-Based Precision:**
-    - Exact IST timing for each event
-    - Strength percentage for each signal
-    - Multi-hour windows for planning
-    
-    **Risk Management:**
-    - 🔴 HIGH risk events
-    - 🟡 MEDIUM risk periods  
-    - 🟢 LOW risk opportunities
+    **Quick Trading Guide:**
+    - 🟢 **Support levels** = Buy zones
+    - 🔴 **Resistance levels** = Sell zones  
+    - ⚡ **Prime targets** = Within ±1%
+    - 🎯 **Scalp levels** = Quick in/out trades
     """)
     
-    st.markdown("### 📊 Usage Tips")
+    st.markdown("### 🌟 Enhanced Features")
     st.markdown("""
-    - Use **Major levels** for position entries
-    - Use **Minor levels** for scalping
-    - **High strength events** (>80%) are most reliable
-    - **Fast planets** (Moon/Mercury) = short-term
-    - **Slow planets** (Saturn/Jupiter) = major moves
+    **Realistic Intraday Levels:**
+    - 🔴 Major: ±2-5% (swing trading)
+    - 🟡 Primary: ±1-2% (position trading)  
+    - 🟢 Minor: ±0.3-0.8% (scalping)
+    
+    **Planetary Influence:**
+    - 🌙 **Moon**: 1.2h cycles, ±3% range
+    - ☿ **Mercury**: News-driven, ±1.8% range
+    - ♀ **Venus**: Value zones, ±2.5% range
+    - ♂ **Mars**: Breakouts, ±3.5% range
+    
+    **Time-Based Precision:**
+    - Exact IST timing for each level
+    - Strength percentage for reliability
+    - Distance from current price
+    """)
+    
+    st.markdown("### 📊 Usage for Nifty/Bank Nifty")
+    st.markdown("""
+    - **Major levels**: Position entries/exits
+    - **Primary levels**: Swing trading zones
+    - **Minor levels**: Scalping opportunities
+    - **Immediate levels**: Within 3% for today
+    
+    **Risk Management:**
+    - Use stop losses at next support/resistance
+    - Higher strength % = more reliable levels
+    - Watch time windows for volatility spikes
+    """)
+    
+    st.markdown("### ⚠️ Disclaimer")
+    st.markdown("""
+    This tool provides astrological analysis for educational purposes. 
+    Always combine with technical analysis and proper risk management.
+    Past performance does not guarantee future results.
     """)
