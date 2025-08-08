@@ -181,6 +181,129 @@ def get_trading_action(planet, degree):
     
     return f"MONITOR {planet} influence"
 
+def calculate_intraday_support_levels(current_price, planet_data, ist_time):
+    """Calculate intraday time-based planetary support/resistance levels"""
+    intraday_levels = []
+    
+    # Moon-based levels (every 1.5 hours = Moon moves ~18-20 degrees)
+    moon_deg = planet_data["Moon"]["longitude"]
+    moon_speed = planet_data["Moon"]["speed"] / 24  # degrees per hour
+    
+    for hour_offset in range(1, 13):  # Next 12 hours
+        target_time = ist_time + timedelta(hours=hour_offset)
+        future_moon_deg = (moon_deg + (moon_speed * hour_offset)) % 360
+        
+        # Calculate price influence based on Moon's position
+        moon_influence = math.sin(math.radians(future_moon_deg)) * 0.8  # ±0.8%
+        level_price = current_price * (1 + moon_influence/100)
+        
+        level_type = "Moon Support" if moon_influence < -0.3 else "Moon Resistance" if moon_influence > 0.3 else "Moon Neutral"
+        signal = "PRIME SCALP" if abs(moon_influence) > 0.5 else "MONITOR"
+        
+        intraday_levels.append({
+            "time": target_time,
+            "price": level_price,
+            "planet": "Moon",
+            "level_type": level_type,
+            "signal": signal,
+            "influence_pct": moon_influence
+        })
+    
+    # Mercury-based levels (news and communication cycles)
+    mercury_deg = planet_data["Mercury"]["longitude"]
+    mercury_speed = planet_data["Mercury"]["speed"] / 24
+    
+    # Key Mercury times (every 3 hours for news cycles)
+    for hour_offset in [2, 5, 8, 11]:
+        target_time = ist_time + timedelta(hours=hour_offset)
+        future_mercury_deg = (mercury_deg + (mercury_speed * hour_offset)) % 360
+        
+        # News-based price levels
+        news_influence = math.cos(math.radians(future_mercury_deg)) * 0.6  # ±0.6%
+        level_price = current_price * (1 + news_influence/100)
+        
+        intraday_levels.append({
+            "time": target_time,
+            "price": level_price,
+            "planet": "Mercury",
+            "level_type": "Mercury Level",
+            "signal": "NEWS WATCH" if abs(news_influence) > 0.4 else "MINOR NEWS",
+            "influence_pct": news_influence
+        })
+    
+    # Venus-based levels (value zones every 4 hours)
+    venus_deg = planet_data["Venus"]["longitude"]
+    venus_speed = planet_data["Venus"]["speed"] / 24
+    
+    for hour_offset in [3, 7, 11]:
+        target_time = ist_time + timedelta(hours=hour_offset)
+        future_venus_deg = (venus_deg + (venus_speed * hour_offset)) % 360
+        
+        # Value-based harmonics
+        harmony_cycle = future_venus_deg % 60  # Venus 60-degree cycles
+        value_influence = math.sin(math.radians(harmony_cycle * 6)) * 0.5  # ±0.5%
+        level_price = current_price * (1 + value_influence/100)
+        
+        signal = "VALUE BUY" if value_influence < -0.2 else "VALUE SELL" if value_influence > 0.2 else "VALUE NEUTRAL"
+        
+        intraday_levels.append({
+            "time": target_time,
+            "price": level_price,
+            "planet": "Venus",
+            "level_type": "Venus Zone",
+            "signal": signal,
+            "influence_pct": value_influence
+        })
+    
+    # Mars-based levels (aggressive moves every 2 hours)
+    mars_deg = planet_data["Mars"]["longitude"]
+    mars_speed = planet_data["Mars"]["speed"] / 24
+    
+    for hour_offset in [1.5, 4.5, 7.5, 10.5]:
+        target_time = ist_time + timedelta(hours=hour_offset)
+        future_mars_deg = (mars_deg + (mars_speed * hour_offset)) % 360
+        
+        # Aggressive breakout levels
+        mars_tension = math.sin(math.radians(future_mars_deg * 2)) * 1.2  # ±1.2%
+        level_price = current_price * (1 + mars_tension/100)
+        
+        level_type = "Mars Breakout" if mars_tension > 0.7 else "Mars Breakdown" if mars_tension < -0.7 else "Mars Level"
+        signal = "MOMENTUM TRADE" if abs(mars_tension) > 0.8 else "WATCH MARS"
+        
+        intraday_levels.append({
+            "time": target_time,
+            "price": level_price,
+            "planet": "Mars",
+            "level_type": level_type,
+            "signal": signal,
+            "influence_pct": mars_tension
+        })
+    
+    # Jupiter levels (major support zones every 6 hours)
+    jupiter_deg = planet_data["Jupiter"]["longitude"]
+    
+    for hour_offset in [6, 12]:
+        target_time = ist_time + timedelta(hours=hour_offset)
+        
+        # Jupiter creates major support/resistance
+        jupiter_influence = 0.8 if hour_offset == 6 else -0.8  # Alternating support/resistance
+        level_price = current_price * (1 + jupiter_influence/100)
+        
+        level_type = "Jupiter Support" if jupiter_influence < 0 else "Jupiter Resistance"
+        signal = "MAJOR SUPPORT" if jupiter_influence < 0 else "MAJOR RESISTANCE"
+        
+        intraday_levels.append({
+            "time": target_time,
+            "price": level_price,
+            "planet": "Jupiter",
+            "level_type": level_type,
+            "signal": signal,
+            "influence_pct": jupiter_influence
+        })
+    
+    # Sort by time and return
+    return sorted(intraday_levels, key=lambda x: x["time"])
+
 def get_price_effect(planet, degree):
     """Get expected price movement effect"""
     effects = {
@@ -203,6 +326,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
     planet_data = get_planetary_positions_today(julian_day)
     price_levels = calculate_planetary_price_levels(planet_data, current_price, symbol)
     daily_cycles = calculate_todays_time_cycles(planet_data, ist_time)
+    intraday_levels = calculate_intraday_support_levels(current_price, planet_data, ist_time)
     
     # Generate report
     report = f"""
@@ -226,6 +350,23 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         
         report += f"""
 | **{planet_name}** | {data['sign']} | {levels['Major_Resistance']:,.0f} | {levels['Primary_Resistance']:,.0f} | {levels['Current_Level']:,.0f} | {levels['Primary_Support']:,.0f} | {levels['Major_Support']:,.0f} | {data['strength']:.0f}% |"""
+
+    # Intraday time-based planetary levels
+    report += f"""
+
+---
+
+## ⏰ Intraday Time-Based Planetary Levels (IST)
+
+| Time (IST) | Price Level | Planet Level | Trading Signal | Influence |
+|------------|-------------|--------------|----------------|-----------|"""
+    
+    for level in intraday_levels[:15]:  # Show next 15 time-based levels
+        time_str = level["time"].strftime("%H:%M")
+        influence_str = f"{level['influence_pct']:+.2f}%"
+        
+        report += f"""
+| **{time_str}** | {level['price']:,.0f} | {level['planet']} {level['level_type']} | {level['signal']} | {influence_str} |"""
 
     # Today's critical time cycles
     report += f"""
@@ -304,7 +445,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 > **Action**: {daily_cycles[0]['trading_action']}
 """
     
-    return report, price_levels, daily_cycles
+    return report, price_levels, daily_cycles, intraday_levels
 
 # Streamlit App
 st.set_page_config(layout="wide", page_title="Daily Planetary Cycles")
@@ -339,7 +480,7 @@ if st.button("🚀 Generate Today's Report", type="primary"):
     try:
         with st.spinner("🌌 Calculating planetary cycles..."):
             start_time = time.time()
-            report, price_levels, daily_cycles = generate_daily_planetary_report(
+            report, price_levels, daily_cycles, intraday_levels = generate_daily_planetary_report(
                 symbol, current_price, tehran_time)
             elapsed_time = time.time() - start_time
             
@@ -371,6 +512,36 @@ if st.button("🚀 Generate Today's Report", type="primary"):
         fig.update_layout(title=f"{symbol} Support/Resistance Levels", height=400)
         st.plotly_chart(fig, use_container_width=True)
         
+        # Highlight next few intraday levels
+        st.markdown("### ⏰ Next Intraday Trading Levels")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        # Show next 6 intraday levels in a nice format
+        for i, level in enumerate(intraday_levels[:6]):
+            col = [col1, col2, col3][i % 3]
+            
+            with col:
+                time_str = level["time"].strftime("%H:%M IST")
+                price_str = f"{level['price']:,.0f}"
+                planet_level = f"{level['planet']} {level['level_type'].split()[1] if len(level['level_type'].split()) > 1 else level['level_type']}"
+                signal = level['signal']
+                
+                # Create colored metric based on signal type
+                if "BUY" in signal or "SUPPORT" in signal:
+                    delta_color = "normal"
+                elif "SELL" in signal or "RESISTANCE" in signal:
+                    delta_color = "inverse" 
+                else:
+                    delta_color = "off"
+                
+                st.metric(
+                    label=f"🕐 {time_str}",
+                    value=price_str,
+                    delta=f"{planet_level} - {signal}",
+                    delta_color=delta_color
+                )
+        
     except Exception as e:
         st.error(f"❌ Error: {e}")
 
@@ -388,4 +559,30 @@ with st.sidebar:
     - 🟢 **Support** = Buy zones
     - 🔴 **Resistance** = Sell zones  
     - ⚡ **Prime targets** = Within ±1%
+    """)
+    
+    st.markdown("### ⏰ Intraday Time Levels")
+    st.markdown("""
+    **Planetary Time Cycles:**
+    - 🌙 **Moon**: Every 1.5h - Scalping
+    - ☿ **Mercury**: Every 3h - News levels
+    - ♀ **Venus**: Every 4h - Value zones
+    - ♂ **Mars**: Every 2h - Breakout levels
+    - ♃ **Jupiter**: Every 6h - Major levels
+    
+    **Trading Signals:**
+    - **PRIME SCALP** - Best scalping opportunity
+    - **NEWS WATCH** - Monitor for news impact
+    - **VALUE BUY/SELL** - Value-based trades
+    - **MOMENTUM TRADE** - Breakout opportunities
+    """)
+    
+    st.markdown("### 📊 Example Levels")
+    st.markdown("""
+    ```
+    10:30 IST - 24,520 - Moon Support - PRIME SCALP
+    11:45 IST - 24,680 - Mercury Level - NEWS WATCH  
+    13:20 IST - 24,590 - Venus Zone - VALUE BUY
+    14:15 IST - 24,745 - Mars Breakout - MOMENTUM
+    ```
     """)
