@@ -27,23 +27,19 @@ def init_swiss_ephemeris():
                 test_jd = swe.julday(2024, 1, 1, 12.0)
                 test_result = swe.calc_ut(test_jd, swe.SUN)
                 if len(test_result) >= 6:
-                    st.success(f"✅ Swiss Ephemeris initialized successfully with path: {path or 'default'}")
-                    return True
+                    return {"status": "success", "path": path or "default"}
             except Exception as e:
                 continue
         
         # If all paths fail, try to use built-in ephemeris
         swe.set_ephe_path(None)
-        st.warning("⚠️ Using built-in ephemeris data (limited accuracy)")
-        return True
+        return {"status": "warning", "message": "Using built-in ephemeris data (limited accuracy)"}
         
     except Exception as e:
-        st.error(f"❌ Failed to initialize Swiss Ephemeris: {e}")
-        return False
+        return {"status": "error", "message": f"Failed to initialize Swiss Ephemeris: {e}"}
 
-# Initialize ephemeris
-if not init_swiss_ephemeris():
-    st.error("Cannot initialize Swiss Ephemeris. Using fallback calculations.")
+# Initialize ephemeris (but don't display messages yet)
+ephemeris_status = init_swiss_ephemeris()
 
 # Planetary cycle characteristics
 PLANETARY_CYCLES = {
@@ -1086,14 +1082,29 @@ def get_aspect_influence(planet1, planet2, aspect_type):
     # Return default influence for aspect type
     return default_influences.get(aspect_type, "Moderate market influence")
 
-# Streamlit App
+# Streamlit App - Page config MUST be first
 st.set_page_config(layout="wide", page_title="Fixed Planetary Trading Reports")
+
+# Now display initialization status
+if ephemeris_status["status"] == "success":
+    st.success(f"✅ Swiss Ephemeris initialized successfully with path: {ephemeris_status.get('path', 'default')}")
+elif ephemeris_status["status"] == "warning":
+    st.warning(f"⚠️ {ephemeris_status['message']}")
+else:
+    st.error(f"❌ {ephemeris_status['message']}")
+    st.info("💡 The app will use fallback calculations for approximate planetary positions.")
+
 st.title("🌟 Fixed Planetary Trading Reports - Any Date Analysis")
 st.markdown("*Generate planetary trading reports for any date and time with enhanced error handling*")
 
-# Display initialization status
+# Display system status in sidebar
 st.sidebar.markdown("### 🔧 System Status")
-st.sidebar.success("✅ Swiss Ephemeris: Ready")
+if ephemeris_status["status"] == "success":
+    st.sidebar.success("✅ Swiss Ephemeris: Full Precision")
+elif ephemeris_status["status"] == "warning":
+    st.sidebar.warning("⚠️ Swiss Ephemeris: Limited Accuracy")
+else:
+    st.sidebar.error("❌ Swiss Ephemeris: Using Fallbacks")
 st.sidebar.success("✅ Error Handling: Enhanced")
 st.sidebar.success("✅ Fallback Calculations: Available")
 
@@ -1217,8 +1228,41 @@ with st.sidebar:
     """)
     
     st.markdown("### 📊 Data Sources")
-    st.markdown("""
-    **Primary**: Swiss Ephemeris (High Precision)
+    accuracy_level = "High Precision" if ephemeris_status["status"] == "success" else "Approximate"
+    st.markdown(f"""
+    **Primary**: Swiss Ephemeris ({accuracy_level})
     **Fallback**: Mathematical approximations
     **Accuracy**: ±0.1° for major planets
+    """)
+    
+    st.markdown("### 🌍 Date Selection")
+    st.markdown("""
+    **Select any date between:**
+    - January 1, 2020
+    - December 31, 2030
+    
+    **Quick Presets Available:**
+    - Aug 6, 2025
+    - Aug 11, 2025
+    - Aug 15, 2025
+    - Dec 31, 2025
+    - Dec 31, 2026
+    """)
+    
+    st.markdown("### 🇮🇳 Market Types")
+    st.markdown("""
+    **Indian Market:** 9:15 AM - 3:30 PM IST
+    **Global Market:** 5:00 AM - 11:55 PM IST
+    """)
+    
+    st.markdown("### 🌟 Report Features")
+    st.markdown("""
+    **For Any Selected Date:**
+    - 🌍 **Planetary Positions** - Exact degrees
+    - 🔄 **Planetary Transits** - Sign changes, stations
+    - ⏱️ **Detailed Timing** - Moon phases, hours
+    - 📊 **Price Levels** - Support/Resistance
+    - ⏰ **Time Cycles** - Trading windows
+    - 🔗 **Planetary Aspects** - Market influences
+    - 🎯 **Buy/Sell Zones** - Action signals
     """)
