@@ -288,7 +288,7 @@ st.write("Enter a trading symbol and current price to generate a financial astro
 # User inputs
 symbol = st.text_input("Trading Symbol (e.g., Gold, Silver, BTC)", value="BTC")
 current_price = st.number_input("Current Price ($)", min_value=0.01, value=64250.0, step=0.01)
-tehran_time_str = st.text_input("Tehran Time (YYYY-MM-DD HH:MM:SS, optional)", value="2025-08-08 11:02:10")
+tehran_time_str = st.text_input("Tehran Time (YYYY-MM-DD HH:MM:SS, optional)", value="2025-08-08 11:05:10")
 
 # Parse Tehran time
 try:
