@@ -5,22 +5,44 @@ import time
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import math
 
-# Initialize ephemeris path at the module level
+# Initialize ephemeris path
 try:
-    swe.set_ephe_path(None)  # Use default ephemeris path
+    swe.set_ephe_path(None)
 except Exception as e:
     st.error(f"Error initializing Swiss Ephemeris: {e}")
     st.stop()
 
-# Cache the planetary position calculations
+# Zodiac signs and their characteristics
+ZODIAC_SIGNS = [
+    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+]
+
+ZODIAC_TRAITS = {
+    "Aries": "Aggressive, impulsive trading",
+    "Taurus": "Stable, resistance to change",
+    "Gemini": "Volatile, quick reversals", 
+    "Cancer": "Emotional reactions, support levels",
+    "Leo": "Strong trends, leadership",
+    "Virgo": "Analytical, precise movements",
+    "Libra": "Balance, consolidation",
+    "Scorpio": "Deep corrections, transformations",
+    "Sagittarius": "Optimistic expansion",
+    "Capricorn": "Conservative, long-term trends",
+    "Aquarius": "Unexpected moves, innovation",
+    "Pisces": "Confusion, lack of direction"
+}
+
 @st.cache_data
 def get_planet_positions(julian_day):
-    """Calculate and cache planetary positions"""
+    """Calculate planetary positions with enhanced data"""
     planets = {
         "Sun": swe.SUN, "Moon": swe.MOON, "Mercury": swe.MERCURY,
         "Venus": swe.VENUS, "Mars": swe.MARS, "Jupiter": swe.JUPITER,
-        "Saturn": swe.SATURN, "Uranus": swe.URANUS, "Neptune": swe.NEPTUNE, "Pluto": swe.PLUTO
+        "Saturn": swe.SATURN, "Uranus": swe.URANUS, "Neptune": swe.NEPTUNE, 
+        "Pluto": swe.PLUTO, "North Node": swe.MEAN_NODE
     }
     
     planet_data = {}
@@ -31,321 +53,588 @@ def get_planet_positions(julian_day):
                 "longitude": pos[0],
                 "latitude": pos[1],
                 "distance": pos[2],
-                "speed": pos[3]
+                "speed": pos[3],
+                "sign": ZODIAC_SIGNS[int(pos[0] // 30)],
+                "degree_in_sign": pos[0] % 30
             }
         except Exception as e:
             st.error(f"Error calculating position for {name}: {e}")
             planet_data[name] = {
-                "longitude": 0.0,
-                "latitude": 0.0,
-                "distance": 0.0,
-                "speed": 0.0
+                "longitude": 0.0, "latitude": 0.0, "distance": 0.0, "speed": 0.0,
+                "sign": "Aries", "degree_in_sign": 0.0
             }
     return planet_data
 
-def generate_financial_astronomy_report(symbol, current_price, tehran_time=None):
-    """Generate a financial astronomy report for any trading symbol"""
-    # Validate inputs
-    if not isinstance(symbol, str) or not symbol:
-        raise ValueError("Symbol must be a non-empty string")
-    if not isinstance(current_price, (int, float)) or current_price <= 0:
-        raise ValueError("Current price must be a positive number")
+def calculate_aspects(planet_data):
+    """Calculate planetary aspects with precise orbs"""
+    aspects = []
+    planets = list(planet_data.keys())
     
-    # Set default time if not provided
+    aspect_types = {
+        "Conjunction": (0, 8, "☌"),
+        "Sextile": (60, 6, "⚹"), 
+        "Square": (90, 8, "□"),
+        "Trine": (120, 8, "△"),
+        "Opposition": (180, 8, "☍")
+    }
+    
+    for i in range(len(planets)):
+        for j in range(i + 1, len(planets)):
+            planet1, planet2 = planets[i], planets[j]
+            angle = abs(planet_data[planet1]["longitude"] - planet_data[planet2]["longitude"])
+            if angle > 180:
+                angle = 360 - angle
+                
+            for aspect_name, (target_angle, max_orb, symbol) in aspect_types.items():
+                orb = abs(angle - target_angle)
+                if orb <= max_orb:
+                    aspects.append({
+                        "type": aspect_name,
+                        "symbol": symbol,
+                        "planet1": planet1,
+                        "planet2": planet2,
+                        "angle": angle,
+                        "orb": orb,
+                        "strength": "Strong" if orb <= 2 else "Moderate" if orb <= 5 else "Weak",
+                        "exact_time": calculate_exact_aspect_time(planet_data, planet1, planet2, target_angle)
+                    })
+    
+    return sorted(aspects, key=lambda x: x["orb"])
+
+def calculate_exact_aspect_time(planet_data, planet1, planet2, target_angle):
+    """Calculate when aspect becomes exact"""
+    current_angle = abs(planet_data[planet1]["longitude"] - planet_data[planet2]["longitude"])
+    if current_angle > 180:
+        current_angle = 360 - current_angle
+    
+    speed_diff = planet_data[planet1]["speed"] - planet_data[planet2]["speed"]
+    if abs(speed_diff) < 0.001:
+        return "Stationary"
+    
+    angle_diff = target_angle - current_angle
+    days_to_exact = angle_diff / speed_diff
+    
+    if abs(days_to_exact) > 30:
+        return f"{abs(days_to_exact):.0f} days ({'approaching' if days_to_exact > 0 else 'separating'})"
+    else:
+        hours_to_exact = days_to_exact * 24
+        return f"{abs(hours_to_exact):.1f} hours ({'approaching' if hours_to_exact > 0 else 'separating'})"
+
+def calculate_resistance_support_levels(symbol, current_price, planet_data):
+    """Calculate dynamic support/resistance based on planetary positions"""
+    levels = {}
+    price_scale = max(1, current_price / 1000)
+    
+    # Primary planetary resistance formulas
+    venus_level = planet_data["Venus"]["longitude"] * 25.0 * price_scale
+    mars_level = planet_data["Mars"]["longitude"] * 18.5 * price_scale  
+    jupiter_level = planet_data["Jupiter"]["longitude"] * 22.3 * price_scale
+    saturn_level = planet_data["Saturn"]["longitude"] * 15.8 * price_scale
+    
+    # Aspect-based levels
+    mars_saturn_angle = abs(planet_data["Mars"]["longitude"] - planet_data["Saturn"]["longitude"]) % 360
+    venus_jupiter_angle = abs(planet_data["Venus"]["longitude"] - planet_data["Jupiter"]["longitude"]) % 360
+    sun_moon_angle = abs(planet_data["Sun"]["longitude"] - planet_data["Moon"]["longitude"]) % 360
+    
+    levels = {
+        "Venus Resistance": {
+            "price": venus_level,
+            "distance": venus_level - current_price,
+            "strength": "Strong" if abs(venus_level - current_price) < 50 * price_scale else "Moderate",
+            "type": "Resistance" if venus_level > current_price else "Support"
+        },
+        "Mars Level": {
+            "price": mars_level,
+            "distance": mars_level - current_price,
+            "strength": "Strong" if abs(mars_level - current_price) < 30 * price_scale else "Moderate",
+            "type": "Resistance" if mars_level > current_price else "Support"
+        },
+        "Jupiter Support": {
+            "price": jupiter_level,
+            "distance": jupiter_level - current_price,
+            "strength": "Strong" if abs(jupiter_level - current_price) < 40 * price_scale else "Weak",
+            "type": "Support" if jupiter_level < current_price else "Resistance"
+        },
+        "Saturn Barrier": {
+            "price": saturn_level,
+            "distance": saturn_level - current_price,
+            "strength": "Very Strong" if abs(saturn_level - current_price) < 20 * price_scale else "Moderate",
+            "type": "Resistance" if saturn_level > current_price else "Support"
+        },
+        "Mars-Saturn Angle": {
+            "price": mars_saturn_angle * 19.05 * price_scale,
+            "distance": (mars_saturn_angle * 19.05 * price_scale) - current_price,
+            "strength": "Critical",
+            "type": "Major Resistance"
+        },
+        "Venus-Jupiter Harmony": {
+            "price": venus_jupiter_angle * 23.4 * price_scale,
+            "distance": (venus_jupiter_angle * 23.4 * price_scale) - current_price,
+            "strength": "Moderate",
+            "type": "Support Zone"
+        }
+    }
+    
+    return levels
+
+def calculate_time_windows(planet_data, base_time):
+    """Calculate critical trading time windows"""
+    windows = []
+    
+    # Fast-moving planet transits
+    moon_speed = planet_data["Moon"]["speed"]  # ~13 degrees per day
+    mercury_speed = planet_data["Mercury"]["speed"]  # ~1.2 degrees per day
+    venus_speed = planet_data["Venus"]["speed"]  # ~1.6 degrees per day
+    
+    # Calculate when planets hit critical degrees
+    critical_degrees = [0, 15, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 345]
+    
+    for planet_name, data in planet_data.items():
+        if planet_name in ["Moon", "Mercury", "Venus", "Mars"]:
+            current_degree = data["longitude"] % 360
+            
+            for critical_deg in critical_degrees:
+                degrees_to_travel = (critical_deg - current_degree) % 360
+                if degrees_to_travel > 180:
+                    degrees_to_travel = degrees_to_travel - 360
+                    
+                if abs(degrees_to_travel) <= 5:  # Within 5 degrees
+                    hours_to_transit = degrees_to_travel / (data["speed"] / 24) if data["speed"] != 0 else 999
+                    
+                    if abs(hours_to_transit) <= 48:  # Within 48 hours
+                        transit_time = base_time + timedelta(hours=hours_to_transit)
+                        
+                        windows.append({
+                            "planet": planet_name,
+                            "event": f"{planet_name} @ {critical_deg}°",
+                            "time": transit_time,
+                            "hours_from_now": hours_to_transit,
+                            "market_impact": get_transit_impact(planet_name, critical_deg),
+                            "trading_advice": get_trading_advice(planet_name, critical_deg)
+                        })
+    
+    return sorted(windows, key=lambda x: abs(x["hours_from_now"]))[:8]  # Top 8 upcoming events
+
+def get_transit_impact(planet, degree):
+    """Get market impact for planetary transits"""
+    impacts = {
+        ("Moon", 0): "New cycle begins - volatility spike",
+        ("Moon", 90): "Quarter moon tension - price swings", 
+        ("Moon", 180): "Full moon peak - trend reversals",
+        ("Moon", 270): "Last quarter - profit taking",
+        ("Mercury", 0): "Communication clarity - trend confirmation",
+        ("Mercury", 90): "Information conflicts - fake breakouts",
+        ("Venus", 0): "Value reassessment - support tests",
+        ("Venus", 180): "Value extremes - resistance hits",
+        ("Mars", 0): "Aggressive buying/selling",
+        ("Mars", 90): "Sharp corrections - stop losses hit"
+    }
+    
+    # Find closest match
+    for (p, d), impact in impacts.items():
+        if p == planet and abs(d - degree) <= 15:
+            return impact
+    
+    return f"{planet} transit - moderate impact"
+
+def get_trading_advice(planet, degree):
+    """Get specific trading advice for transits"""
+    advice_map = {
+        ("Moon", 0): "Reduce position sizes, high volatility expected",
+        ("Moon", 90): "Set wider stops, expect whipsaws",
+        ("Moon", 180): "Watch for reversals, take profits",
+        ("Mercury", 0): "Good for trend following",
+        ("Mercury", 90): "Avoid new positions, confusion likely",
+        ("Venus", 0): "Look for value entries",
+        ("Mars", 0): "Momentum trades favored",
+        ("Mars", 90): "Defensive positioning advised"
+    }
+    
+    for (p, d), advice in advice_map.items():
+        if p == planet and abs(d - degree) <= 15:
+            return advice
+    
+    return "Monitor price action carefully"
+
+def generate_comprehensive_report(symbol, current_price, tehran_time=None):
+    """Generate comprehensive financial astrology report"""
     if tehran_time is None:
         tehran_time = datetime.now()
     
-    # Convert Tehran time to UTC and IST
+    # Time conversions
     utc_time = tehran_time - timedelta(hours=3, minutes=30)
     ist_time = tehran_time + timedelta(hours=2)
-    
-    # Calculate Julian Day
     julian_day = swe.julday(utc_time.year, utc_time.month, utc_time.day, 
                             utc_time.hour + utc_time.minute/60 + utc_time.second/3600)
     
-    # Get cached planetary positions
+    # Get planetary data
     planet_data = get_planet_positions(julian_day)
-    
-    # Determine Moon's zodiac sign
-    zodiac_signs = [
-        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
-    ]
-    moon_longitude = planet_data["Moon"]["longitude"]
-    moon_sign = zodiac_signs[int(moon_longitude // 30)]
-    
-    # Calculate key aspects
-    aspects = []
-    
-    # Mars-Saturn opposition
-    mars_saturn_angle = abs(planet_data["Mars"]["longitude"] - planet_data["Saturn"]["longitude"]) % 360
-    mars_saturn_orb = min(mars_saturn_angle, 360 - mars_saturn_angle)
-    if mars_saturn_orb < 5:
-        aspects.append({
-            "type": "Opposition",
-            "planets": "Mars ☋ Saturn",
-            "angle": mars_saturn_angle,
-            "orb": mars_saturn_orb,
-            "impact": f"Strong resistance at ${mars_saturn_angle * 19.05:.2f}"
-        })
-    
-    # Venus-Jupiter conjunction
-    venus_jupiter_angle = abs(planet_data["Venus"]["longitude"] - planet_data["Jupiter"]["longitude"]) % 360
-    venus_jupiter_orb = min(venus_jupiter_angle, 360 - venus_jupiter_angle)
-    if venus_jupiter_orb < 5:
-        aspects.append({
-            "type": "Conjunction",
-            "planets": "Venus ☍ Jupiter",
-            "angle": venus_jupiter_angle,
-            "orb": venus_jupiter_orb,
-            "impact": "Mild bullish support"
-        })
-    
-    # Venus-Mars square
-    venus_mars_angle = abs(planet_data["Venus"]["longitude"] - planet_data["Mars"]["longitude"]) % 360
-    venus_mars_orb = min(abs(venus_mars_angle - 90), abs(venus_mars_angle - 270))
-    if venus_mars_orb < 10:
-        aspects.append({
-            "type": "Square",
-            "planets": "Venus □ Mars",
-            "angle": venus_mars_angle,
-            "orb": venus_mars_orb,
-            "impact": "Volatility warning"
-        })
-    
-    # Calculate resistance levels with dynamic scaling
-    price_scale = max(1, current_price / 1000)  # Scale for high-priced assets
-    venus_resistance = planet_data["Venus"]["longitude"] * 20.02 * price_scale
-    mars_saturn_resistance = mars_saturn_angle * 19.05 * price_scale
-    
-    # Pre-calculate values for trading strategy
-    is_mars_saturn_above = mars_saturn_resistance > current_price
-    price_diff = abs(mars_saturn_resistance - current_price)
-    
-    # Trading strategy values with bounds
-    target_price = max(0, mars_saturn_resistance - price_diff * 1.5 if is_mars_saturn_above else mars_saturn_resistance + price_diff * 1.5)
-    stop_loss = max(0, mars_saturn_resistance + price_diff * 0.3 if is_mars_saturn_above else mars_saturn_resistance - price_diff * 0.3)
-    entry_price = max(0, mars_saturn_resistance - price_diff * 0.2 if is_mars_saturn_above else mars_saturn_resistance + price_diff * 0.2)
-    
-    # Venus-Jupiter bounce target
-    venus_jupiter_target = current_price + (venus_jupiter_orb * 10 * price_scale)
-    
-    # Price scenarios
-    rejection_target = max(0, mars_saturn_resistance - price_diff * 1.5 if is_mars_saturn_above else mars_saturn_resistance + price_diff * 1.5)
-    breakout_target = max(0, mars_saturn_resistance + price_diff * 2 if is_mars_saturn_above else mars_saturn_resistance - price_diff * 2)
-    range_low = min(current_price, mars_saturn_resistance)
-    range_high = max(current_price, mars_saturn_resistance)
-    
-    # Risk factor calculations
-    squeeze_target = max(0, mars_saturn_resistance + price_diff * 2 if is_mars_saturn_above else mars_saturn_resistance - price_diff * 2)
-    
-    # Probability calculations
-    rejection_prob = 85 if mars_saturn_orb < 1 else 70 if mars_saturn_orb < 3 else 50
-    breakout_prob = 15 if mars_saturn_orb < 1 else 30 if mars_saturn_orb < 3 else 50
+    aspects = calculate_aspects(planet_data)
+    levels = calculate_resistance_support_levels(symbol, current_price, planet_data)
+    time_windows = calculate_time_windows(planet_data, ist_time)
     
     # Generate report
     report = f"""
 ### Financial Astronomy Report for {symbol} Trading ({tehran_time.strftime('%Y-%m-%d')})
-**Indian Standard Time (IST)** | **Current {symbol} Price: ${current_price}**
+**Indian Standard Time (IST)** | **Current {symbol} Price: ${current_price:,.2f}**
+
 ---
+
 ### ⏰ Time Conversion
 - **Tehran Time**: {tehran_time.strftime('%H:%M:%S')}  
 - **Indian Standard Time (IST)**: **{ist_time.strftime('%H:%M:%S')}**  
-  *(IST is UTC+5:30, Tehran is UTC+3:30 → IST is 2 hours ahead)*
+- **UTC**: {utc_time.strftime('%H:%M:%S')}
+- **Julian Day**: {julian_day:.6f}
+
 ---
-### 🌟 Planetary Positions (IST {ist_time.strftime('%H:%M:%S')})
-| Planet      | Longitude (°) | Latitude (°) | Distance (AU) | Speed (°/day) | Financial Significance |
-|-------------|---------------|--------------|---------------|---------------|------------------------|"""
+
+### 🌟 Planetary Positions & Transits (IST {ist_time.strftime('%H:%M:%S')})
+| Planet      | Longitude | Sign & Degree | Speed (°/day) | Distance (AU) | Financial Significance |
+|-------------|-----------|---------------|---------------|---------------|------------------------|"""
+    
     for name, data in planet_data.items():
-        significance = ""
-        if name == "Venus":
-            significance = "Key resistance"
-        elif name == "Mars":
-            significance = "Bearish pressure"
-        elif name == "Jupiter":
-            significance = "Mild support"
-        elif name == "Moon":
-            significance = "Volatility trigger"
-        elif name == "Saturn":
-            significance = "Long-term uncertainty"
+        significance = {
+            "Sun": "Overall market direction",
+            "Moon": "Daily volatility & sentiment", 
+            "Mercury": "News & communication impact",
+            "Venus": "Value & support levels",
+            "Mars": "Aggressive moves & resistance",
+            "Jupiter": "Expansion & major trends",
+            "Saturn": "Restrictions & long-term barriers",
+            "Uranus": "Sudden reversals & innovation",
+            "Neptune": "Deception & unclear trends", 
+            "Pluto": "Major transformations",
+            "North Node": "Destiny point & major cycles"
+        }.get(name, "Secondary influence")
         
         report += f"""
-| {name:<10} | {data['longitude']:>8.2f}°   | {data['latitude']:>8.2f}°   | {data['distance']:>13.3f}     | {data['speed']:>13.4f} | {significance} |"""
-    
-    # Resistance levels section
-    report += f"""
----
-### 💰 {symbol} Resistance Levels (Current Price: ${current_price})
-| Method               | Calculation                     | Resistance Level | Distance to Current Price |
-|----------------------|---------------------------------|------------------|----------------------------|
-| Venus Longitude      | {planet_data['Venus']['longitude']:.2f}° × {20.02 * price_scale:.2f} | ${venus_resistance:<15.2f} | {venus_resistance - current_price:+.2f} ({'above' if venus_resistance > current_price else 'below'}) |
-| Mars-Saturn Angle    | {mars_saturn_angle:.2f}° × {19.05 * price_scale:.2f} | ${mars_saturn_resistance:<15.2f} | {mars_saturn_resistance - current_price:+.2f} ({'above' if mars_saturn_resistance > current_price else 'below'}) |
-| Current Price        | Market data                     | ${current_price:<15.2f} | Reference point            |
-"""
-    
-    # Aspects section
-    report += f"""
----
-### 🔍 Key Planetary Aspects (IST)
-| Aspect                | Planets Involved | Angle (°) | Orb (°) | {symbol} Impact at ${current_price} |
-|-----------------------|------------------|-----------|---------|--------------------------------|"""
-    for aspect in aspects:
-        report += f"""
-| {aspect['type']:<20} | {aspect['planets']:<16} | {aspect['angle']:>8.2f}°   | {aspect['orb']:>7.2f}°   | {aspect['impact']} |"""
-    
-    # Time windows section
-    report += f"""
----
-### ⏱️ Critical Time Windows (IST)
-| Time (IST)   | Event                     | Expected {symbol} Movement | Current Price Context |
-|--------------|---------------------------|----------------------------|------------------------|
-| {ist_time.strftime('%H:%M')}-{(ist_time + timedelta(minutes=30)).strftime('%H:%M')} | Venus Cycle Peak         | Resistance test at ${venus_resistance:.2f} | ${abs(venus_resistance - current_price):.2f} {'above' if venus_resistance > current_price else 'below'} |
-| {(ist_time + timedelta(minutes=30)).strftime('%H:%M')}-{(ist_time + timedelta(hours=1)).strftime('%H:%M')} | Mars-Saturn Opposition  | Rejection at ${mars_saturn_resistance:.2f} | ${price_diff:.2f} {'below' if is_mars_saturn_above else 'above'} |
-| {(ist_time + timedelta(hours=1)).strftime('%H:%M')}-{(ist_time + timedelta(hours=2)).strftime('%H:%M')} | Moon-Uranus Tension      | High volatility        | Avoid new positions    |
-| {(ist_time + timedelta(hours=2)).strftime('%H:%M')}-{(ist_time + timedelta(hours=3)).strftime('%H:%M')} | Venus-Jupiter Influence | Short-term bounce      | Potential recovery     |
-"""
-    
-    # Trading strategy section
-    report += f"""
----
-### 📊 Trading Strategy for {symbol} (${current_price})
-#### Primary Signal: Mars-Saturn Opposition
-- **Resistance Level**: ${mars_saturn_resistance:.2f} (${price_diff:.2f} {'above' if is_mars_saturn_above else 'below'} current price)
-- **Probability**: {rejection_prob}% chance of rejection
-- **Action**: {'Sell' if is_mars_saturn_above else 'Buy'} {symbol} with target ${target_price:.2f}
-- **Stop-Loss**: ${stop_loss:.2f}
-- **Risk-Reward**: 1:{abs(1.5):.1f}
-#### Secondary Signals
-1. **Venus at ${venus_resistance:.2f}**:
-   - Current price (${current_price}) is {abs(venus_resistance - current_price):.2f} {'above' if venus_resistance < current_price else 'below'} this level
-   - {'No immediate impact' if abs(venus_resistance - current_price) > 100 * price_scale else 'Monitor for reaction'}
-2. **Moon-Uranus Volatility** ({(ist_time + timedelta(hours=1)).strftime('%H:%M')}-{(ist_time + timedelta(hours=2)).strftime('%H:%M')} IST):
-   - Reduce position size by 50%
-   - Use wider stop-losses
-3. **Venus-Jupiter Bounce** ({(ist_time + timedelta(hours=2)).strftime('%H:%M')}-{(ist_time + timedelta(hours=3)).strftime('%H:%M')} IST):
-   - If {symbol} holds ${current_price - 10 * price_scale:.2f}, consider {'longs' if venus_jupiter_orb < 2 else 'shorts'} with target ${venus_jupiter_target:.2f}
-"""
-    
-    # Lunar influence section
-    report += f"""
----
-### 🌙 Lunar Influence
-- **Moon Position**: {planet_data['Moon']['longitude']:.2f}° ({moon_sign})
-- **Effect**: Amplifies algorithmic trading
-- **Recommendation**: Monitor volume spikes at ${mars_saturn_resistance - 3 * price_scale:.2f}-${mars_saturn_resistance + 3 * price_scale:.2f}
-"""
-    
-    # Risk factors section
-    report += f"""
----
-### ⚠️ Critical Risk Factors
-1. **Mars-Saturn Opposition** ({mars_saturn_angle:.2f}°):
-   - Most precise aspect today ({mars_saturn_orb:.2f}° orb)
-   - Historically causes 4-5% drops in precious metals
-2. **Mercury Retrograde** ({planet_data['Mercury']['speed']:.4f}°/day):
-   - Increases false breakout risk
-   - Requires confirmation from RSI/volume
-3. **Current Price Context**:
-   - ${current_price} is {'dangerously close to' if price_diff < 20 * price_scale else 'within normal range of'} ${mars_saturn_resistance:.2f} resistance
-   - Break {'above' if is_mars_saturn_above else 'below'} ${mars_saturn_resistance:.2f} could trigger {'short squeeze' if is_mars_saturn_above else 'liquidation cascade'} to ${squeeze_target:.2f}
-"""
-    
-    # Price scenarios section
-    report += f"""
----
-### 📈 Price Action Scenarios
-| Scenario       | Probability | Target Price | Action Required |
-|----------------|-------------|--------------|-----------------|
-| {'Rejection' if is_mars_saturn_above else 'Breakout'} | {rejection_prob}% | ${rejection_target:.2f} | {'Sell' if is_mars_saturn_above else 'Buy'} at ${entry_price:.2f} |
-| {'Breakout' if is_mars_saturn_above else 'Rejection'} | {breakout_prob}% | ${breakout_target:.2f} | {'Buy' if is_mars_saturn_above else 'Sell'} {'above' if is_mars_saturn_above else 'below'} ${mars_saturn_resistance:.2f} |
-| Sideways       | 30%         | ${range_low:.2f}-${range_high:.2f} | Range trading   |
-"""
-    
-    # Key insight section
-    report += f"""
----
-### 💡 Key Insight for Today
-The Mars-Saturn opposition at ${mars_saturn_resistance:.2f} is the dominant force today, overriding Venus's normally bullish influence. With {symbol} at ${current_price} (only ${price_diff:.2f} {'below' if is_mars_saturn_above else 'above'} resistance), traders should:
-1. **Prepare for rejection** at ${mars_saturn_resistance - 3 * price_scale:.2f}-${mars_saturn_resistance + 3 * price_scale:.2f}
-2. **{'Sell' if is_mars_saturn_above else 'Buy'} on approach** to resistance
-3. **Avoid {'long' if is_mars_saturn_above else 'short'} positions** until after {(ist_time + timedelta(hours=2)).strftime('%H:%M')} IST
-4. **Watch volume** - spike above 20K contracts confirms rejection
-> **Final Recommendation**: {'Short' if is_mars_saturn_above else 'Long'} {symbol} at ${entry_price:.2f} with stop-loss ${stop_loss:.2f} and target ${target_price:.2f}. This offers {abs(1.5/0.3):.1f}:1 reward-risk ratio based on planetary resistance.
-"""
-    
-    return report, planet_data
+| {name:<11} | {data['longitude']:>7.2f}° | {data['sign']} {data['degree_in_sign']:>5.2f}° | {data['speed']:>9.4f} | {data['distance']:>11.3f} | {significance} |"""
 
-def create_resistance_chart(symbol, current_price, planet_data, price_scale):
-    """Create a resistance levels chart using Plotly"""
-    venus_resistance = planet_data["Venus"]["longitude"] * 20.02 * price_scale
-    mars_saturn_angle = abs(planet_data["Mars"]["longitude"] - planet_data["Saturn"]["longitude"]) % 360
-    mars_saturn_resistance = mars_saturn_angle * 19.05 * price_scale
+    # Resistance/Support Levels
+    report += f"""
+
+---
+
+### 💰 {symbol} Support & Resistance Levels (Current: ${current_price:,.2f})
+| Level Name | Price | Distance | Type | Strength | Trading Signal |
+|------------|-------|----------|------|----------|----------------|"""
     
-    # Create bar chart
-    fig = go.Figure()
+    for level_name, level_data in levels.items():
+        distance_text = f"{level_data['distance']:+.2f}"
+        signal = "STRONG SELL" if level_data['type'] == "Resistance" and abs(level_data['distance']) < 20 else \
+                "STRONG BUY" if level_data['type'] == "Support" and abs(level_data['distance']) < 20 else \
+                "MONITOR"
+        
+        report += f"""
+| {level_name} | ${level_data['price']:,.2f} | {distance_text} | {level_data['type']} | {level_data['strength']} | {signal} |"""
+
+    # Planetary Aspects
+    report += f"""
+
+---
+
+### 🔍 Key Planetary Aspects & Influences
+| Aspect | Planets | Current Angle | Orb | Strength | Market Impact | Exact Timing |
+|--------|---------|---------------|-----|----------|---------------|--------------|"""
     
-    fig.add_trace(go.Bar(
-        name='Price Levels',
-        x=['Venus Resistance', 'Mars-Saturn Resistance', 'Current Price'],
-        y=[venus_resistance, mars_saturn_resistance, current_price],
-        marker_color=['#FF6384', '#36A2EB', '#FFCE56']
-    ))
+    for aspect in aspects[:6]:  # Show top 6 aspects
+        impact = {
+            "Conjunction": "Amplification of combined energies",
+            "Sextile": "Mild positive influence", 
+            "Square": "Tension & volatility",
+            "Trine": "Harmonious flow & support",
+            "Opposition": "Conflict & reversals"
+        }.get(aspect["type"], "Mixed influence")
+        
+        report += f"""
+| {aspect['type']} {aspect['symbol']} | {aspect['planet1']}-{aspect['planet2']} | {aspect['angle']:>6.2f}° | {aspect['orb']:>4.2f}° | {aspect['strength']} | {impact} | {aspect['exact_time']} |"""
+
+    # Critical Time Windows  
+    report += f"""
+
+---
+
+### ⏱️ Critical Time Windows & Planetary Transits
+| Time (IST) | Event | Hours Away | Market Impact | Trading Advice |
+|------------|-------|------------|---------------|----------------|"""
     
-    fig.update_layout(
-        title=f'{symbol} Resistance Levels Chart',
-        yaxis_title='Price ($)',
-        xaxis_title='Level',
-        showlegend=False,
-        height=500
+    for window in time_windows:
+        time_str = window['time'].strftime('%H:%M')
+        hours_away = f"{window['hours_from_now']:+.1f}h"
+        
+        report += f"""
+| {time_str} | {window['event']} | {hours_away} | {window['market_impact']} | {window['trading_advice']} |"""
+
+    # Moon Phase Analysis
+    sun_moon_angle = abs(planet_data["Sun"]["longitude"] - planet_data["Moon"]["longitude"])
+    moon_phase = "New Moon" if sun_moon_angle < 45 else \
+                "Waxing Crescent" if sun_moon_angle < 90 else \
+                "First Quarter" if sun_moon_angle < 135 else \
+                "Waxing Gibbous" if sun_moon_angle < 180 else \
+                "Full Moon" if sun_moon_angle < 225 else \
+                "Waning Gibbous" if sun_moon_angle < 270 else \
+                "Last Quarter" if sun_moon_angle < 315 else "Waning Crescent"
+
+    report += f"""
+
+---
+
+### 🌙 Lunar Analysis & Market Sentiment
+- **Current Moon Phase**: {moon_phase} ({sun_moon_angle:.1f}° separation)
+- **Moon Sign**: {planet_data['Moon']['sign']} - {ZODIAC_TRAITS[planet_data['Moon']['sign']]}
+- **Moon Speed**: {planet_data['Moon']['speed']:.2f}°/day ({'Fast' if planet_data['Moon']['speed'] > 13 else 'Slow'})
+- **Lunar Impact**: {'High volatility expected' if sun_moon_angle < 45 or 135 < sun_moon_angle < 225 else 'Moderate volatility'}
+
+---
+
+### 📊 Trading Strategy Summary for {symbol} (${current_price:,.2f})
+
+#### 🎯 Primary Signals:
+"""
+    
+    # Find the strongest resistance/support levels
+    closest_resistance = min([l for l in levels.values() if l['type'] == 'Resistance' and l['distance'] > 0], 
+                           key=lambda x: x['distance'], default=None)
+    closest_support = min([l for l in levels.values() if l['type'] == 'Support' and l['distance'] < 0], 
+                         key=lambda x: abs(x['distance']), default=None)
+    
+    if closest_resistance:
+        report += f"""
+- **Next Resistance**: ${closest_resistance['price']:,.2f} ({closest_resistance['strength']} - {closest_resistance['distance']:+.2f} away)
+- **Resistance Strategy**: Monitor for rejection, consider shorts if approach with high volume"""
+    
+    if closest_support:
+        report += f"""
+- **Next Support**: ${closest_support['price']:,.2f} ({closest_support['strength']} - {abs(closest_support['distance']):.2f} below)
+- **Support Strategy**: Look for bounces, consider longs on successful test"""
+
+    # Strongest aspects for trading
+    strongest_aspect = aspects[0] if aspects else None
+    if strongest_aspect:
+        aspect_advice = {
+            "Square": "High volatility - use tight stops and smaller positions",
+            "Opposition": "Expect reversals - fade extremes", 
+            "Conjunction": "Strong directional moves - trend following favored",
+            "Trine": "Smooth trends - good for swing trading",
+            "Sextile": "Mild positive bias - look for buying opportunities"
+        }.get(strongest_aspect["type"], "Monitor price action")
+        
+        report += f"""
+
+#### 🌟 Dominant Aspect: {strongest_aspect['type']} {strongest_aspect['symbol']} 
+- **Planets**: {strongest_aspect['planet1']} - {strongest_aspect['planet2']}
+- **Orb**: {strongest_aspect['orb']:.2f}° ({strongest_aspect['strength']})
+- **Trading Impact**: {aspect_advice}
+- **Timing**: {strongest_aspect['exact_time']}"""
+
+    report += f"""
+
+#### ⚠️ Risk Management:
+- **Position Size**: Reduce by 25% during high volatility windows
+- **Stop Loss**: Use wider stops during Moon-Mars aspects
+- **Time Limits**: Avoid new positions 1 hour before major transits
+
+#### 🎲 Probability Assessment:
+- **Bullish Scenario**: 35% - Jupiter-Venus influences support bounce
+- **Bearish Scenario**: 45% - Mars-Saturn creating resistance pressure  
+- **Sideways**: 20% - Conflicting planetary forces create consolidation
+
+---
+
+### 💡 Key Insight for {symbol} Today
+
+The cosmic landscape shows {aspects[0]['planet1']}-{aspects[0]['planet2']} {aspects[0]['type']} as the dominant influence, creating {'tension and volatility' if aspects[0]['type'] in ['Square', 'Opposition'] else 'supportive energy'} for {symbol}. 
+
+**Current price of ${current_price:,.2f}** is positioned {'near critical resistance' if closest_resistance and closest_resistance['distance'] < 50 else 'in a neutral zone'}. 
+
+**Key Times to Watch:**
+{time_windows[0]['time'].strftime('- %H:%M IST')}: {time_windows[0]['event']} - {time_windows[0]['trading_advice']}
+{time_windows[1]['time'].strftime('- %H:%M IST')}: {time_windows[1]['event']} - {time_windows[1]['trading_advice']}
+
+> **Final Recommendation**: {'BEARISH BIAS' if aspects[0]['type'] in ['Square', 'Opposition'] else 'BULLISH BIAS'} - Trade with the dominant {aspects[0]['type']} energy. Use planetary levels for entries and exits.
+"""
+    
+    return report, planet_data, aspects, levels, time_windows
+
+def create_planetary_chart(planet_data, current_price, levels):
+    """Create comprehensive planetary chart"""
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('Planetary Positions (Degrees)', 'Support/Resistance Levels', 
+                       'Planetary Speeds', 'Zodiac Distribution'),
+        specs=[[{"type": "bar"}, {"type": "bar"}],
+               [{"type": "scatter"}, {"type": "pie"}]]
     )
     
+    # Planetary positions
+    planets = list(planet_data.keys())
+    longitudes = [planet_data[p]["longitude"] for p in planets]
+    
+    fig.add_trace(
+        go.Bar(x=planets, y=longitudes, name="Longitude (°)", 
+               marker_color="lightblue"),
+        row=1, col=1
+    )
+    
+    # Support/Resistance levels  
+    level_names = list(levels.keys())
+    level_prices = [levels[l]["price"] for l in level_names]
+    colors = ['red' if levels[l]["type"] == "Resistance" else 'green' for l in level_names]
+    
+    fig.add_trace(
+        go.Bar(x=level_names, y=level_prices, name="Price Levels",
+               marker_color=colors),
+        row=1, col=2
+    )
+    
+    # Add current price line
+    fig.add_hline(y=current_price, line_dash="dash", line_color="orange", 
+                  annotation_text=f"Current Price: ${current_price}", row=1, col=2)
+    
+    # Planetary speeds
+    speeds = [planet_data[p]["speed"] for p in planets]
+    fig.add_trace(
+        go.Scatter(x=planets, y=speeds, mode='markers+lines', name="Speed (°/day)",
+                   marker=dict(size=10, color="purple")),
+        row=2, col=1
+    )
+    
+    # Zodiac distribution
+    sign_counts = {}
+    for planet in planet_data.values():
+        sign = planet["sign"]
+        sign_counts[sign] = sign_counts.get(sign, 0) + 1
+    
+    fig.add_trace(
+        go.Pie(labels=list(sign_counts.keys()), values=list(sign_counts.values()),
+               name="Zodiac Distribution"),
+        row=2, col=2
+    )
+    
+    fig.update_layout(height=800, showlegend=True, 
+                      title_text="Comprehensive Planetary Analysis")
     return fig
 
-# Streamlit app interface
-st.set_page_config(layout="wide", page_title="Financial Astrology Report")
+# Streamlit Interface
+st.set_page_config(layout="wide", page_title="Comprehensive Financial Astrology")
 
-st.title("Financial Astrology Report Generator")
-st.write("Enter a trading symbol and current price to generate a financial astrology report.")
+st.title("🌟 Comprehensive Financial Astrology Report Generator")
+st.markdown("*Generate detailed planetary transit analysis with precise support/resistance levels for any trading symbol*")
 
-# User inputs in columns for better layout
-col1, col2 = st.columns(2)
+# Input Section
+col1, col2, col3 = st.columns(3)
+
 with col1:
-    symbol = st.text_input("Trading Symbol (e.g., Gold, Silver, BTC)", value="BTC")
+    symbol = st.text_input("Trading Symbol", value="GOLD", help="Enter any trading symbol (e.g., GOLD, BTC, EURUSD)")
+    
 with col2:
-    current_price = st.number_input("Current Price ($)", min_value=0.01, value=64250.0, step=0.01)
+    current_price = st.number_input("Current Price ($)", min_value=0.01, value=2640.50, step=0.01,
+                                   help="Enter the current market price")
+    
+with col3:
+    tehran_time_str = st.text_input("Tehran Time (optional)", 
+                                   value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                   help="Format: YYYY-MM-DD HH:MM:SS")
 
-tehran_time_str = st.text_input("Tehran Time (YYYY-MM-DD HH:MM:SS, optional)", value="2025-08-08 11:12:10")
-
-# Parse Tehran time
+# Parse time
 try:
-    tehran_time = datetime.strptime(tehran_time_str, "%Y-%m-%d %H:%M:%S") if tehran_time_str else None
+    tehran_time = datetime.strptime(tehran_time_str, "%Y-%m-%d %H:%M:%S")
 except ValueError:
-    st.error("Invalid date format. Use YYYY-MM-DD HH:MM:SS or leave blank for current time.")
-    tehran_time = None
+    st.error("Invalid date format. Using current time.")
+    tehran_time = datetime.now()
 
-# Generate report on button click
-if st.button("Generate Report"):
+# Generate Report
+if st.button("🚀 Generate Comprehensive Report", type="primary"):
     try:
-        # Show spinner during calculation
-        with st.spinner("Calculating planetary positions and generating report..."):
+        with st.spinner("🌌 Calculating planetary positions and market influences..."):
             start_time = time.time()
-            report, planet_data = generate_financial_astronomy_report(symbol, current_price, tehran_time)
+            report, planet_data, aspects, levels, time_windows = generate_comprehensive_report(
+                symbol, current_price, tehran_time)
             elapsed_time = time.time() - start_time
             
-        st.success(f"Report generated in {elapsed_time:.2f} seconds")
+        st.success(f"✅ Report generated in {elapsed_time:.2f} seconds")
+        
+        # Display report
         st.markdown(report)
         
-        # Add chart for resistance levels
-        st.markdown("### Resistance Levels Chart")
-        price_scale = max(1, current_price / 1000)
-        fig = create_resistance_chart(symbol, current_price, planet_data, price_scale)
+        # Charts
+        st.markdown("### 📊 Planetary Analysis Charts")
+        fig = create_planetary_chart(planet_data, current_price, levels)
         st.plotly_chart(fig, use_container_width=True)
         
-        # Display planetary positions as a DataFrame
-        st.markdown("### Planetary Positions Data")
-        df_planets = pd.DataFrame(planet_data).T
-        st.dataframe(df_planets, use_container_width=True)
+        # Data Tables
+        col1, col2 = st.columns(2)
         
+        with col1:
+            st.markdown("#### 🌍 Planetary Data")
+            df_planets = pd.DataFrame(planet_data).T
+            st.dataframe(df_planets, use_container_width=True)
+            
+        with col2:
+            st.markdown("#### 🎯 Aspects Data") 
+            if aspects:
+                df_aspects = pd.DataFrame(aspects)
+                st.dataframe(df_aspects, use_container_width=True)
+            else:
+                st.info("No major aspects currently active")
+                
+        # Export options
+        st.markdown("### 📥 Export Options")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("📄 Download Report as Text"):
+                st.download_button(
+                    label="Download Report",
+                    data=report,
+                    file_name=f"{symbol}_astrology_report_{tehran_time.strftime('%Y%m%d_%H%M')}.txt",
+                    mime="text/plain"
+                )
+                
+        with col2:
+            if st.button("📊 Download Planetary Data"):
+                csv_data = pd.DataFrame(planet_data).T.to_csv()
+                st.download_button(
+                    label="Download CSV",
+                    data=csv_data,
+                    file_name=f"{symbol}_planetary_data_{tehran_time.strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
+                
     except Exception as e:
-        st.error(f"Error generating report: {str(e)}")
+        st.error(f"❌ Error generating report: {str(e)}")
         st.exception(e)
+
+# Sidebar with additional information
+with st.sidebar:
+    st.markdown("### 🌟 About Financial Astrology")
+    st.markdown("""
+    This tool combines ancient astrological wisdom with modern financial analysis:
+    
+    **Key Features:**
+    - Real-time planetary positions
+    - Dynamic support/resistance levels
+    - Precise aspect calculations
+    - Time-based trading windows
+    - Moon phase analysis
+    - Transit timing predictions
+    
+    **Planetary Influences:**
+    - 🌞 **Sun**: Overall market direction
+    - 🌙 **Moon**: Daily volatility & sentiment  
+    - ☿ **Mercury**: News impact & communication
+    - ♀ **Venus**: Value levels & support
+    - ♂ **Mars**: Aggressive moves & resistance
+    - ♃ **Jupiter**: Major trends & expansion
+    - ♄ **Saturn**: Long-term barriers
+    - ♅ **Uranus**: Sudden reversals
+    - ♆ **Neptune**: Deception & uncertainty
+    - ♇ **Pluto**: Major transformations
+    """)
+    
+    st.markdown("### ⚠️ Disclaimer")
+    st.markdown("""
+    This tool is for educational and research purposes only. 
+    Astrological analysis should not be the sole basis for trading decisions. 
+    Always combine with technical analysis and risk management.
+    """)
