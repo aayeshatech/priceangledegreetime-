@@ -537,6 +537,40 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 ## ⏱️ No Major Planetary Events Today
 *Slow-moving planets dominate - expect range-bound trading*"""
 
+    # Add immediate trading opportunities section
+    report += f"""
+
+---
+
+## 🎯 Immediate Trading Opportunities (Within 3% Range)
+
+| Planet Level | Price | Distance | % Move | Strength | Action |
+|--------------|-------|----------|--------|----------|--------|"""
+    
+    # Find levels within 3% of current price
+    opportunity_count = 0
+    for planet_name, data in price_levels.items():
+        levels = data["levels"]
+        for level_name, level_price in levels.items():
+            if level_name not in ["Current_Level"]:
+                distance_pct = abs((level_price - current_price) / current_price) * 100
+                if distance_pct <= 3.0 and opportunity_count < 8:  # Within 3% - good for intraday
+                    distance = level_price - current_price
+                    action = "🚀 BUY ZONE" if distance < 0 else "🛑 SELL ZONE"
+                    if abs(distance_pct) <= 1.0:
+                        action = "⚡ PRIME TARGET"
+                    
+                    level_display = level_name.replace("_", " ")
+                    
+                    report += f"""
+| {planet_name} {level_display} | {level_price:,.0f} | {distance:+.0f} | {distance_pct:+.2f}% | {data['strength']:.0f}% | {action} |"""
+                    
+                    opportunity_count += 1
+    
+    if opportunity_count == 0:
+        report += f"""
+| No levels within 3% | - | - | - | - | Monitor wider ranges |"""
+
     # Current planetary strength analysis
     report += f"""
 
