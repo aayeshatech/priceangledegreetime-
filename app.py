@@ -2,9 +2,16 @@ import streamlit as st
 import swisseph as swe
 from datetime import datetime, timedelta
 import time
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Initialize ephemeris path at the module level
-swe.set_ephe_path(None)  # Use default ephemeris path
+try:
+    swe.set_ephe_path(None)  # Use default ephemeris path
+except Exception as e:
+    st.error(f"Error initializing Swiss Ephemeris: {e}")
+    st.stop()
 
 # Cache the planetary position calculations
 @st.cache_data
@@ -18,13 +25,22 @@ def get_planet_positions(julian_day):
     
     planet_data = {}
     for name, planet_id in planets.items():
-        pos = swe.calc_ut(julian_day, planet_id)[0]
-        planet_data[name] = {
-            "longitude": pos[0],
-            "latitude": pos[1],
-            "distance": pos[2],
-            "speed": pos[3]
-        }
+        try:
+            pos = swe.calc_ut(julian_day, planet_id)[0]
+            planet_data[name] = {
+                "longitude": pos[0],
+                "latitude": pos[1],
+                "distance": pos[2],
+                "speed": pos[3]
+            }
+        except Exception as e:
+            st.error(f"Error calculating position for {name}: {e}")
+            planet_data[name] = {
+                "longitude": 0.0,
+                "latitude": 0.0,
+                "distance": 0.0,
+                "speed": 0.0
+            }
     return planet_data
 
 def generate_financial_astronomy_report(symbol, current_price, tehran_time=None):
@@ -257,7 +273,33 @@ The Mars-Saturn opposition at ${mars_saturn_resistance:.2f} is the dominant forc
 > **Final Recommendation**: {'Short' if is_mars_saturn_above else 'Long'} {symbol} at ${entry_price:.2f} with stop-loss ${stop_loss:.2f} and target ${target_price:.2f}. This offers {abs(1.5/0.3):.1f}:1 reward-risk ratio based on planetary resistance.
 """
     
-    return report
+    return report, planet_data
+
+def create_resistance_chart(symbol, current_price, planet_data, price_scale):
+    """Create a resistance levels chart using Plotly"""
+    venus_resistance = planet_data["Venus"]["longitude"] * 20.02 * price_scale
+    mars_saturn_angle = abs(planet_data["Mars"]["longitude"] - planet_data["Saturn"]["longitude"]) % 360
+    mars_saturn_resistance = mars_saturn_angle * 19.05 * price_scale
+    
+    # Create bar chart
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        name='Price Levels',
+        x=['Venus Resistance', 'Mars-Saturn Resistance', 'Current Price'],
+        y=[venus_resistance, mars_saturn_resistance, current_price],
+        marker_color=['#FF6384', '#36A2EB', '#FFCE56']
+    ))
+    
+    fig.update_layout(
+        title=f'{symbol} Resistance Levels Chart',
+        yaxis_title='Price ($)',
+        xaxis_title='Level',
+        showlegend=False,
+        height=500
+    )
+    
+    return fig
 
 # Streamlit app interface
 st.set_page_config(layout="wide", page_title="Financial Astrology Report")
@@ -287,40 +329,22 @@ if st.button("Generate Report"):
         # Show spinner during calculation
         with st.spinner("Calculating planetary positions and generating report..."):
             start_time = time.time()
-            report = generate_financial_astronomy_report(symbol, current_price, tehran_time)
+            report, planet_data = generate_financial_astronomy_report(symbol, current_price, tehran_time)
             elapsed_time = time.time() - start_time
             
         st.success(f"Report generated in {elapsed_time:.2f} seconds")
         st.markdown(report)
         
         # Add chart for resistance levels
-        chart_data = {
-            "type": "bar",
-            "data": {
-                "labels": ["Venus Resistance", "Mars-Saturn Resistance", "Current Price"],
-                "datasets": [{
-                    "label": f"{symbol} Price Levels",
-                    "data": [
-                        planet_data["Venus"]["longitude"] * 20.02 * max(1, current_price / 1000),
-                        abs(planet_data["Mars"]["longitude"] - planet_data["Saturn"]["longitude"]) % 360 * 19.05 * max(1, current_price / 1000),
-                        current_price
-                    ],
-                    "backgroundColor": ["#FF6384", "#36A2EB", "#FFCE56"],
-                    "borderColor": ["#FF6384", "#36A2EB", "#FFCE56"],
-                    "borderWidth": 1
-                }]
-            },
-            "options": {
-                "responsive": True,
-                "scales": {
-                    "y": {"beginAtZero": True, "title": {"display": True, "text": "Price ($)"}},
-                    "x": {"title": {"display": True, "text": "Level"}}
-                }
-            }
-        }
-        
         st.markdown("### Resistance Levels Chart")
-        st.markdown(f"```chartjs\n{chart_data}\n```")
+        price_scale = max(1, current_price / 1000)
+        fig = create_resistance_chart(symbol, current_price, planet_data, price_scale)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Display planetary positions as a DataFrame
+        st.markdown("### Planetary Positions Data")
+        df_planets = pd.DataFrame(planet_data).T
+        st.dataframe(df_planets, use_container_width=True)
         
     except Exception as e:
         st.error(f"Error generating report: {str(e)}")
