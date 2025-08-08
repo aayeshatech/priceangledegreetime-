@@ -1,7 +1,7 @@
 import streamlit as st
 import swisseph as swe
-from datetime import datetime, timedelta, time
-import time as time_module
+from datetime import datetime, timedelta, time as dt_time
+import time as time_module  # Import time with an alias to avoid conflicts
 import pandas as pd
 import plotly.graph_objects as go
 import math
@@ -487,12 +487,12 @@ def is_within_market_hours(dt, market_type):
     """Check if datetime is within market hours"""
     t = dt.time()
     if market_type == "Indian":
-        start = time_module(9, 15)
-        end = time_module(15, 30)
+        start = dt_time(9, 15)
+        end = dt_time(15, 30)
         return start <= t <= end
     else:  # Global
-        start = time_module(5, 0)
-        end = time_module(23, 55)
+        start = dt_time(5, 0)
+        end = dt_time(23, 55)
         return start <= t <= end
 
 def generate_daily_planetary_report(symbol, current_price, tehran_time, market_type):
@@ -746,10 +746,10 @@ market_type = st.selectbox("Market Type", ["Indian", "Global"],
 if st.button("🚀 Generate Today's Report", type="primary"):
     try:
         with st.spinner("🌌 Calculating planetary cycles..."):
-            start_time = time_module.time()
+            start_time = time_module.time()  # Fixed: use time_module instead of time
             report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times = generate_daily_planetary_report(
                 symbol, current_price, tehran_time, market_type)
-            elapsed_time = time_module.time() - start_time
+            elapsed_time = time_module.time() - start_time  # Fixed: use time_module instead of time
             
         st.success(f"✅ Report generated in {elapsed_time:.2f} seconds")
         
