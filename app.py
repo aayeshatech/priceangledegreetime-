@@ -1,7 +1,7 @@
 import streamlit as st
 import swisseph as swe
 from datetime import datetime, timedelta, time as dt_time
-import time as time_module  # Import time with an alias to avoid conflicts
+import time as time_module
 import pandas as pd
 import plotly.graph_objects as go
 import math
@@ -28,8 +28,8 @@ PLANETARY_CYCLES = {
 }
 
 @st.cache_data
-def get_planetary_positions_today(julian_day):
-    """Get today's planetary positions"""
+def get_planetary_positions(julian_day):
+    """Get planetary positions for any date"""
     planets = {
         "Sun": swe.SUN, "Moon": swe.MOON, "Mercury": swe.MERCURY,
         "Venus": swe.VENUS, "Mars": swe.MARS, "Jupiter": swe.JUPITER,
@@ -48,7 +48,8 @@ def get_planetary_positions_today(julian_day):
                 "sign": get_zodiac_sign(pos[0]),
                 "degree_in_sign": pos[0] % 30
             }
-        except Exception:
+        except Exception as e:
+            st.warning(f"Error calculating {name}: {e}")
             planet_data[name] = {"longitude": 0, "latitude": 0, "distance": 1, "speed": 0.5, "sign": "Aries", "degree_in_sign": 0}
     
     return planet_data
@@ -160,8 +161,8 @@ def calculate_planetary_price_levels(planet_data, current_price, symbol):
     
     return price_levels
 
-def calculate_todays_time_cycles(planet_data, base_time_ist):
-    """Calculate today's critical planetary time cycles in IST"""
+def calculate_time_cycles(planet_data, base_time_ist):
+    """Calculate critical planetary time cycles in IST"""
     daily_cycles = []
     
     for planet_name, data in planet_data.items():
@@ -227,7 +228,7 @@ def get_trading_action(planet, degree):
     
     return f"MONITOR {planet} influence"
 
-def calculate_intraday_support_levels(current_price, planet_data, ist_time):
+def calculate_intraday_levels(current_price, planet_data, ist_time):
     """Calculate intraday time-based planetary support/resistance levels"""
     intraday_levels = []
     
@@ -349,7 +350,7 @@ def calculate_intraday_support_levels(current_price, planet_data, ist_time):
     
     return intraday_levels
 
-def identify_day_trading_zones(price_levels, current_price, intraday_levels):
+def identify_trading_zones(price_levels, current_price, intraday_levels):
     """Identify key buy/sell zones and high-probability time windows"""
     
     # Initialize empty lists to prevent NoneType errors
@@ -495,8 +496,8 @@ def is_within_market_hours(dt, market_type):
         end = dt_time(23, 55)
         return start <= t <= end
 
-def generate_daily_planetary_report(symbol, current_price, tehran_time, market_type):
-    """Generate focused daily planetary cycles report"""
+def generate_planetary_report(symbol, current_price, tehran_time, market_type):
+    """Generate focused planetary cycles report for any date"""
     try:
         # Time conversions
         ist_time = tehran_time + timedelta(hours=2)
@@ -506,14 +507,14 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         julian_day = swe.julday(utc_time.year, utc_time.month, utc_time.day, 
                                utc_time.hour + utc_time.minute/60 + utc_time.second/3600)
         
-        planet_data = get_planetary_positions_today(julian_day)
+        planet_data = get_planetary_positions(julian_day)
         if not planet_data:
             st.error("Failed to get planetary data")
             return None, None, None, None, None, None, None
             
         price_levels = calculate_planetary_price_levels(planet_data, current_price, symbol)
-        daily_cycles = calculate_todays_time_cycles(planet_data, ist_time)
-        intraday_levels = calculate_intraday_support_levels(current_price, planet_data, ist_time)
+        daily_cycles = calculate_time_cycles(planet_data, ist_time)
+        intraday_levels = calculate_intraday_levels(current_price, planet_data, ist_time)
         
         # Ensure all data structures are valid
         if not price_levels:
@@ -528,7 +529,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         intraday_levels_filtered = [level for level in intraday_levels if is_within_market_hours(level['time'], market_type)]
         
         # Get trading zones and high-probability times
-        sell_zones, buy_zones, high_prob_times = identify_day_trading_zones(price_levels, current_price, intraday_levels_filtered)
+        sell_zones, buy_zones, high_prob_times = identify_trading_zones(price_levels, current_price, intraday_levels_filtered)
         
         # Filter high probability times based on market type
         high_prob_times_filtered = [time_window for time_window in high_prob_times if is_within_market_hours(time_window['time'], market_type)]
@@ -541,7 +542,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         # Generate report
         market_hours = "9:15 AM - 3:30 PM" if market_type == "Indian" else "5:00 AM - 11:55 PM"
         report = f"""
-# 🌟 Daily Planetary Cycles - {market_type} Market Hours
+# 🌟 Planetary Trading Report - {market_type} Market Hours
 ## {symbol} Trading - {tehran_time.strftime('%Y-%m-%d')}
 ### ⏰ Time Base (All times in IST - Indian Standard Time)
 - **Tehran Time**: {tehran_time.strftime('%H:%M:%S')} 🇮🇷
@@ -549,7 +550,25 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
 - **Market Hours**: **{market_hours}**
 - **Current {symbol} Price**: **{current_price:,.0f}**
 ---
-## 🎯 Today's Planetary Intraday Levels (Perfect for Day Trading)
+## 🌟 Planetary Positions at Report Time
+| Planet      | Longitude (°) | Sign & Degree | Speed (°/day) | Distance (AU) |
+|-------------|---------------|---------------|---------------|---------------|"""
+        
+        if planet_data:
+            for planet_name, data in planet_data.items():
+                try:
+                    report += f"""
+| **{planet_name}** | {data['longitude']:.2f}° | {data['sign']} | {data['speed']:.4f} | {data['distance']:.3f} |"""
+                except Exception as e:
+                    st.warning(f"Error processing planet {planet_name}: {e}")
+                    continue
+        else:
+            report += """
+| No data | - | - | - | - |"""
+        
+        report += f"""
+---
+## 🎯 Planetary Price Levels (Based on Current Positions)
 | Planet | Position | Major Resist | Primary Resist | Current | Primary Support | Major Support | Strength |
 |--------|----------|--------------|----------------|---------|-----------------|---------------|----------|"""
         
@@ -567,7 +586,8 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
                     continue
         else:
             report += """
-| No data | - | - | - | - | - | - | - |"""
+| No data | - | - | - | - | - | - |"""
+        
         # Intraday time-based planetary levels
         report += f"""
 ---
@@ -588,10 +608,11 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         else:
             report += """
 | No intraday levels | - | - | - | - |"""
+        
         # Day Resistance Sell Zones (Highlighted)
         report += f"""
 ---
-## 🔴 DAY RESISTANCE LEVELS - SELL ZONES
+## 🔴 RESISTANCE LEVELS - SELL ZONES
 | Priority | Planet Level | Price | Distance | Strength | Zone Quality | Action |
 |----------|--------------|-------|----------|----------|--------------|--------|"""
         
@@ -612,7 +633,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         # Day Support Buy Zones (Highlighted)
         report += f"""
 ---
-## 🟢 DAY SUPPORT LEVELS - BUY ZONES
+## 🟢 SUPPORT LEVELS - BUY ZONES
 | Priority | Planet Level | Price | Distance | Strength | Zone Quality | Action |
 |----------|--------------|-------|----------|----------|--------------|--------|"""
         
@@ -629,6 +650,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         else:
             report += """
 | No buy zones | - | - | - | - | - | - |"""
+        
         # High Probability Time Windows
         report += f"""
 ---
@@ -658,10 +680,11 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         else:
             report += """
 | No time windows | - | - | - | - | - | - |"""
+        
         # Today's critical time cycles
         report += f"""
 ---
-## ⏱️ Today's Critical Planetary Time Cycles (IST)
+## ⏱️ Critical Planetary Time Cycles (IST)
 | Time (IST) | Planet | Event | Trading Action | Expected Move | Hours Away |
 |------------|--------|-------|----------------|---------------|------------|"""
         
@@ -678,6 +701,7 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         else:
             report += """
 | No major cycles today | - | - | - | - | - |"""
+        
         # Add summary
         strongest_planet = "Sun"  # Default
         if price_levels:
@@ -692,9 +716,30 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
                 next_event_text = f"{daily_cycles_filtered[0]['time_ist'].strftime('%H:%M IST')} - {daily_cycles_filtered[0]['planet']} @ {daily_cycles_filtered[0]['target_degree']:.0f}°"
             except:
                 pass
+        
+        # Add planetary aspects summary
+        aspects_summary = calculate_planetary_aspects(planet_data)
+        
         report += f"""
 ---
-## 💡 Today's Key Insights
+## 🔗 Key Planetary Aspects
+| Aspect | Planets | Angle (°) | Orb (°) | Market Influence |
+|--------|---------|-----------|---------|-----------------|"""
+        
+        if aspects_summary:
+            for aspect in aspects_summary[:8]:
+                try:
+                    report += f"""
+| {aspect['type']} | {aspect['planets']} | {aspect['angle']:.1f}° | {aspect['orb']:.1f}° | {aspect['influence']} |"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No major aspects | - | - | - | - |"""
+        
+        report += f"""
+---
+## 💡 Key Insights for {tehran_time.strftime('%Y-%m-%d')}
 ### 🎯 Dominant Influence: **{strongest_planet}**
 - **Primary Action**: Focus on {strongest_planet.lower()} levels for best trades
 ### 📊 Trading Summary:
@@ -712,10 +757,94 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time, market_t
         st.error(f"Error generating report: {e}")
         return None, None, None, None, None, None, None
 
+def calculate_planetary_aspects(planet_data):
+    """Calculate major planetary aspects"""
+    aspects = []
+    
+    # Define aspect types and their orbs
+    aspect_types = {
+        "Conjunction": {"angle": 0, "orb": 8},
+        "Opposition": {"angle": 180, "orb": 8},
+        "Trine": {"angle": 120, "orb": 8},
+        "Square": {"angle": 90, "orb": 8},
+        "Sextile": {"angle": 60, "orb": 6}
+    }
+    
+    planets = list(planet_data.keys())
+    
+    for i in range(len(planets)):
+        for j in range(i+1, len(planets)):
+            planet1 = planets[i]
+            planet2 = planets[j]
+            
+            try:
+                lon1 = planet_data[planet1]["longitude"] % 360
+                lon2 = planet_data[planet2]["longitude"] % 360
+                
+                # Calculate angular separation
+                separation = abs(lon1 - lon2)
+                if separation > 180:
+                    separation = 360 - separation
+                
+                # Check for aspects
+                for aspect_name, aspect_data in aspect_types.items():
+                    orb = abs(separation - aspect_data["angle"])
+                    if orb <= aspect_data["orb"]:
+                        # Determine influence based on planets and aspect
+                        influence = get_aspect_influence(planet1, planet2, aspect_name)
+                        
+                        aspects.append({
+                            "type": aspect_name,
+                            "planets": f"{planet1} - {planet2}",
+                            "angle": separation,
+                            "orb": orb,
+                            "influence": influence
+                        })
+            except Exception as e:
+                continue
+    
+    # Sort by orb (tightest aspects first)
+    aspects.sort(key=lambda x: x["orb"])
+    return aspects
+
+def get_aspect_influence(planet1, planet2, aspect_type):
+    """Get market influence description for planetary aspects"""
+    # Define influences based on planet combinations and aspect types
+    influences = {
+        ("Mars", "Saturn", "Opposition"): "Strong bearish pressure, major resistance",
+        ("Venus", "Jupiter", "Conjunction"): "Bullish support, value buying",
+        ("Sun", "Moon", "Conjunction"): "New energy, trend initiation",
+        ("Mercury", "Mars", "Square"): "News-driven volatility, sharp moves",
+        ("Jupiter", "Saturn", "Square"): "Market structural changes",
+        ("Uranus", "Pluto", "Conjunction"): "Transformational shifts",
+    }
+    
+    # Default influence if not specifically defined
+    default_influences = {
+        "Conjunction": "Combined energies, new beginnings",
+        "Opposition": "Tension, polarity, turning points",
+        "Trine": "Harmony, flow, positive developments",
+        "Square": "Challenge, friction, action required",
+        "Sextile": "Opportunity, cooperation, ease"
+    }
+    
+    # Check for specific combination
+    key = (planet1, planet2, aspect_type)
+    if key in influences:
+        return influences[key]
+    
+    # Check reverse order
+    key = (planet2, planet1, aspect_type)
+    if key in influences:
+        return influences[key]
+    
+    # Return default influence for aspect type
+    return default_influences.get(aspect_type, "Moderate market influence")
+
 # Streamlit App
-st.set_page_config(layout="wide", page_title="Daily Planetary Cycles")
-st.title("🌟 Daily Planetary Cycles - Market Specific Trading")
-st.markdown("*Realistic support/resistance levels for Nifty, Bank Nifty & Global markets - All times in IST*")
+st.set_page_config(layout="wide", page_title="Planetary Trading Reports")
+st.title("🌟 Planetary Trading Reports - Any Date Analysis")
+st.markdown("*Generate planetary trading reports for any date and time with precise support/resistance levels*")
 
 # Input section
 col1, col2, col3 = st.columns(3)
@@ -726,30 +855,74 @@ with col2:
     current_price = st.number_input("Current Price", value=24594.0, step=0.1, help="Current market price")
     
 with col3:
-    default_time = datetime.now()
-    tehran_time_input = st.text_input("Time", 
-                                     value=default_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                     help="Format: YYYY-MM-DD HH:MM:SS")
+    market_type = st.selectbox("Market Type", ["Indian", "Global"], 
+                              help="Indian Market: 9:15 AM - 3:30 PM IST | Global Market: 5:00 AM - 11:55 PM IST")
 
-# Parse time
-try:
-    tehran_time = datetime.strptime(tehran_time_input, "%Y-%m-%d %H:%M:%S")
-except:
-    tehran_time = datetime.now()
-    st.error("Invalid time format, using current time")
+# Date and time selection
+st.markdown("### 📅 Select Date and Time for Analysis")
+col1, col2 = st.columns(2)
 
-# Market type selection
-market_type = st.selectbox("Market Type", ["Indian", "Global"], 
-                          help="Indian Market: 9:15 AM - 3:30 PM IST | Global Market: 5:00 AM - 11:55 PM IST")
+with col1:
+    selected_date = st.date_input(
+        "Select Date",
+        datetime.now().date(),
+        min_value=datetime(2020, 1, 1).date(),
+        max_value=datetime(2030, 12, 31).date(),
+        help="Choose any date between 2020 and 2030"
+    )
+
+with col2:
+    selected_time = st.time_input(
+        "Select Time (Tehran Time)",
+        datetime.now().time(),
+        help="Time in Tehran timezone (IST = Tehran + 2 hours)"
+    )
+
+# Combine date and time
+tehran_time = datetime.combine(selected_date, selected_time)
+
+# Quick date presets
+st.markdown("### 🗓️ Quick Date Presets")
+preset_col1, preset_col2, preset_col3, preset_col4, preset_col5 = st.columns(5)
+
+with preset_col1:
+    if st.button("Aug 6, 2025"):
+        selected_date = datetime(2025, 8, 6).date()
+        tehran_time = datetime.combine(selected_date, datetime.now().time())
+        st.rerun()
+
+with preset_col2:
+    if st.button("Aug 11, 2025"):
+        selected_date = datetime(2025, 8, 11).date()
+        tehran_time = datetime.combine(selected_date, datetime.now().time())
+        st.rerun()
+
+with preset_col3:
+    if st.button("Aug 15, 2025"):
+        selected_date = datetime(2025, 8, 15).date()
+        tehran_time = datetime.combine(selected_date, datetime.now().time())
+        st.rerun()
+
+with preset_col4:
+    if st.button("Dec 31, 2025"):
+        selected_date = datetime(2025, 12, 31).date()
+        tehran_time = datetime.combine(selected_date, datetime.now().time())
+        st.rerun()
+
+with preset_col5:
+    if st.button("Dec 31, 2026"):
+        selected_date = datetime(2026, 12, 31).date()
+        tehran_time = datetime.combine(selected_date, datetime.now().time())
+        st.rerun()
 
 # Generate report
-if st.button("🚀 Generate Today's Report", type="primary"):
+if st.button("🚀 Generate Planetary Report", type="primary"):
     try:
-        with st.spinner("🌌 Calculating planetary cycles..."):
-            start_time = time_module.time()  # Fixed: use time_module instead of time
-            report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times = generate_daily_planetary_report(
+        with st.spinner("🌌 Calculating planetary positions and cycles..."):
+            start_time = time_module.time()
+            report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times = generate_planetary_report(
                 symbol, current_price, tehran_time, market_type)
-            elapsed_time = time_module.time() - start_time  # Fixed: use time_module instead of time
+            elapsed_time = time_module.time() - start_time
             
         st.success(f"✅ Report generated in {elapsed_time:.2f} seconds")
         
@@ -935,29 +1108,38 @@ if st.button("🚀 Generate Today's Report", type="primary"):
 
 # Sidebar
 with st.sidebar:
-    st.markdown("### 🌍 Market Selection")
+    st.markdown("### 🌍 Date Selection")
     st.markdown("""
-    **Market Types:**
-    - 🇮🇳 **Indian Market**: 9:15 AM - 3:30 PM IST
-    - 🌐 **Global Market**: 5:00 AM - 11:55 PM IST
+    **Select any date between:**
+    - January 1, 2020
+    - December 31, 2030
+    
+    **Quick Presets Available:**
+    - Aug 6, 2025
+    - Aug 11, 2025
+    - Aug 15, 2025
+    - Dec 31, 2025
+    - Dec 31, 2026
+    """)
+    
+    st.markdown("### 🇮🇳 Market Types")
+    st.markdown("""
+    **Indian Market:** 9:15 AM - 3:30 PM IST
+    **Global Market:** 5:00 AM - 11:55 PM IST
     
     **Current Selection:** """ + market_type)
     
-    st.markdown("### 🇮🇳 For Indian Traders")
+    st.markdown("### 🌟 Report Features")
     st.markdown("""
-    **Perfect for NSE/BSE:**
-    - 🕘 All times in **IST**
-    - 📊 **Nifty/Bank Nifty** optimized
-    - ⚡ **Scalping levels** 
-    - 🎯 **Intraday range**: ±0.3% to ±5%
-    
-    **Zone Guide:**
-    - 🔴 **SELL ZONES** = Resistance levels
-    - 🟢 **BUY ZONES** = Support levels  
-    - ⚡ **Prime targets** = Within ±1%
+    **For Any Selected Date:**
+    - 🌍 **Planetary Positions** - Exact degrees
+    - 📊 **Price Levels** - Support/Resistance
+    - ⏰ **Time Cycles** - Trading windows
+    - 🔗 **Planetary Aspects** - Market influences
+    - 🎯 **Buy/Sell Zones** - Action signals
     """)
     
-    st.markdown("### 🎯 Trading Zone Priorities")
+    st.markdown("### 📈 Trading Zone Guide")
     st.markdown("""
     **Priority Levels:**
     - 🚨 **P1** - Immediate action (±1.5%)
@@ -986,19 +1168,19 @@ with st.sidebar:
     - ♃ **Jupiter**: 6h - Major support/resistance
     """)
     
-    st.markdown("### 🎯 Example Trading Setup")
+    st.markdown("### 🔗 Planetary Aspects")
     st.markdown("""
-    ```
-    🚨 SELL ZONE ALERT:
-    10:30 IST - Mars Resistance 
-    Price: 24,680 (+0.35%)
-    Action: SELL on approach
+    **Major Aspects:**
+    - **Conjunction** (0°): New beginnings
+    - **Opposition** (180°): Turning points
+    - **Trine** (120°): Harmonious flow
+    - **Square** (90°): Challenges/action
+    - **Sextile** (60°): Opportunities
     
-    🚨 BUY ZONE ALERT:  
-    13:20 IST - Venus Support
-    Price: 24,520 (-0.30%)
-    Action: BUY on test
-    ```
+    **Key Combinations:**
+    - Mars-Saturn: Bearish pressure
+    - Venus-Jupiter: Bullish support
+    - Sun-Moon: Trend initiation
     """)
     
     st.markdown("### ⚠️ Risk Management")
@@ -1007,4 +1189,5 @@ with st.sidebar:
     - **Position size** based on zone strength
     - **Time windows** show best entry/exit
     - **Multiple confirmations** for major trades
+    - **Date-specific** planetary influences
     """)
