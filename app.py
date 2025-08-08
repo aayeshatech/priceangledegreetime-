@@ -288,7 +288,7 @@ st.write("Enter a trading symbol and current price to generate a financial astro
 # User inputs
 symbol = st.text_input("Trading Symbol (e.g., Gold, Silver, BTC)", value="BTC")
 current_price = st.number_input("Current Price ($)", min_value=0.01, value=64250.0, step=0.01)
-tehran_time_str = st.text_input("Tehran Time (YYYY-MM-DD HH:MM:SS, optional)", value="2025-08-08 11:08:10")
+tehran_time_str = st.text_input("Tehran Time (YYYY-MM-DD HH:MM:SS, optional)", value="2025-08-08 11:12:10")
 
 # Parse Tehran time
 try:
@@ -302,5 +302,28 @@ if st.button("Generate Report"):
     try:
         report = generate_financial_astronomy_report(symbol, current_price, tehran_time)
         st.markdown(report)
+        
+        # Add chart for resistance levels
+        chart_data = {
+            "type": "bar",
+            "data": {
+                "labels": ["Venus Resistance", "Mars-Saturn Resistance", "Current Price"],
+                "datasets": [{
+                    "label": f"{symbol} Price Levels",
+                    "data": [venus_resistance, mars_saturn_resistance, current_price],
+                    "backgroundColor": ["#FF6384", "#36A2EB", "#FFCE56"],
+                    "borderColor": ["#FF6384", "#36A2EB", "#FFCE56"],
+                    "borderWidth": 1
+                }]
+            },
+            "options": {
+                "scales": {
+                    "y": {"beginAtZero": True, "title": {"display": True, "text": "Price ($)"}},
+                    "x": {"title": {"display": True, "text": "Level"}}
+                }
+            }
+        }
+        st.markdown("### Resistance Levels Chart")
+        st.markdown(f"```chartjs\n{chart_data}\n```")
     except Exception as e:
         st.error(f"Error generating report: {str(e)}")
