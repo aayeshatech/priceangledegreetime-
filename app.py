@@ -304,102 +304,125 @@ def calculate_intraday_support_levels(current_price, planet_data, ist_time):
 def identify_day_trading_zones(price_levels, current_price, intraday_levels):
     """Identify key buy/sell zones and high-probability time windows"""
     
-    # Collect all resistance levels (sell zones)
+    # Initialize empty lists to prevent NoneType errors
     sell_zones = []
     buy_zones = []
-    
-    for planet, data in price_levels.items():
-        levels = data["levels"]
-        strength = data["strength"]
-        
-        # Resistance levels above current price (SELL ZONES)
-        for level_name in ["Minor_Resistance", "Primary_Resistance", "Major_Resistance"]:
-            level_price = levels[level_name]
-            if level_price > current_price:
-                distance_pct = ((level_price - current_price) / current_price) * 100
-                zone_strength = "HIGH" if strength > 70 else "MEDIUM" if strength > 50 else "LOW"
-                
-                sell_zones.append({
-                    "planet": planet,
-                    "level_name": level_name.replace("_", " "),
-                    "price": level_price,
-                    "distance": level_price - current_price,
-                    "distance_pct": distance_pct,
-                    "strength": strength,
-                    "zone_strength": zone_strength,
-                    "priority": 1 if distance_pct <= 1.5 else 2 if distance_pct <= 3.0 else 3
-                })
-        
-        # Support levels below current price (BUY ZONES)  
-        for level_name in ["Minor_Support", "Primary_Support", "Major_Support"]:
-            level_price = levels[level_name]
-            if level_price < current_price:
-                distance_pct = abs((level_price - current_price) / current_price) * 100
-                zone_strength = "HIGH" if strength > 70 else "MEDIUM" if strength > 50 else "LOW"
-                
-                buy_zones.append({
-                    "planet": planet,
-                    "level_name": level_name.replace("_", " "),
-                    "price": level_price,
-                    "distance": current_price - level_price,
-                    "distance_pct": distance_pct,
-                    "strength": strength,
-                    "zone_strength": zone_strength,
-                    "priority": 1 if distance_pct <= 1.5 else 2 if distance_pct <= 3.0 else 3
-                })
-    
-    # Sort by priority and distance
-    sell_zones.sort(key=lambda x: (x["priority"], x["distance"]))
-    buy_zones.sort(key=lambda x: (x["priority"], x["distance"]))
-    
-    # Identify high-probability time windows
     high_prob_times = []
     
-    for level in intraday_levels:
-        time_window = level["time"]
-        planet = level["planet"]
-        signal = level["signal"]
-        influence = abs(level["influence_pct"])
-        
-        # Classify time windows by probability
-        if influence > 0.7:
-            probability = "VERY HIGH"
-            action_type = "MAJOR TRADE"
-        elif influence > 0.5:
-            probability = "HIGH" 
-            action_type = "STRONG TRADE"
-        elif influence > 0.3:
-            probability = "MEDIUM"
-            action_type = "MODERATE TRADE"
-        else:
-            probability = "LOW"
-            action_type = "WATCH ONLY"
-        
-        # Determine buy/sell bias
-        if "BUY" in signal or "SUPPORT" in signal:
-            bias = "BUY ZONE"
-            zone_color = "🟢"
-        elif "SELL" in signal or "RESISTANCE" in signal or "BREAKOUT" in signal:
-            bias = "SELL ZONE" 
-            zone_color = "🔴"
-        else:
-            bias = "NEUTRAL ZONE"
-            zone_color = "🟡"
-        
-        high_prob_times.append({
-            "time": time_window,
-            "planet": planet,
-            "signal": signal,
-            "probability": probability,
-            "action_type": action_type,
-            "bias": bias,
-            "zone_color": zone_color,
-            "influence": influence,
-            "price": level["price"]
-        })
+    # Check if price_levels is valid
+    if not price_levels or not isinstance(price_levels, dict):
+        return sell_zones, buy_zones, high_prob_times
     
-    # Sort by time
-    high_prob_times.sort(key=lambda x: x["time"])
+    # Collect all resistance levels (sell zones)
+    try:
+        for planet, data in price_levels.items():
+            if not isinstance(data, dict) or "levels" not in data:
+                continue
+                
+            levels = data["levels"]
+            strength = data.get("strength", 50)
+            
+            # Resistance levels above current price (SELL ZONES)
+            for level_name in ["Minor_Resistance", "Primary_Resistance", "Major_Resistance"]:
+                if level_name in levels:
+                    level_price = levels[level_name]
+                    if level_price > current_price:
+                        distance_pct = ((level_price - current_price) / current_price) * 100
+                        zone_strength = "HIGH" if strength > 70 else "MEDIUM" if strength > 50 else "LOW"
+                        
+                        sell_zones.append({
+                            "planet": planet,
+                            "level_name": level_name.replace("_", " "),
+                            "price": level_price,
+                            "distance": level_price - current_price,
+                            "distance_pct": distance_pct,
+                            "strength": strength,
+                            "zone_strength": zone_strength,
+                            "priority": 1 if distance_pct <= 1.5 else 2 if distance_pct <= 3.0 else 3
+                        })
+            
+            # Support levels below current price (BUY ZONES)  
+            for level_name in ["Minor_Support", "Primary_Support", "Major_Support"]:
+                if level_name in levels:
+                    level_price = levels[level_name]
+                    if level_price < current_price:
+                        distance_pct = abs((level_price - current_price) / current_price) * 100
+                        zone_strength = "HIGH" if strength > 70 else "MEDIUM" if strength > 50 else "LOW"
+                        
+                        buy_zones.append({
+                            "planet": planet,
+                            "level_name": level_name.replace("_", " "),
+                            "price": level_price,
+                            "distance": current_price - level_price,
+                            "distance_pct": distance_pct,
+                            "strength": strength,
+                            "zone_strength": zone_strength,
+                            "priority": 1 if distance_pct <= 1.5 else 2 if distance_pct <= 3.0 else 3
+                        })
+    except Exception as e:
+        st.warning(f"Error processing price levels: {e}")
+    
+    # Process intraday levels
+    if intraday_levels and isinstance(intraday_levels, list):
+        try:
+            for level in intraday_levels:
+                if not isinstance(level, dict):
+                    continue
+                    
+                time_window = level.get("time")
+                planet = level.get("planet", "Unknown")
+                signal = level.get("signal", "MONITOR")
+                influence = abs(level.get("influence_pct", 0))
+                
+                if not time_window:
+                    continue
+                
+                # Classify time windows by probability
+                if influence > 0.7:
+                    probability = "VERY HIGH"
+                    action_type = "MAJOR TRADE"
+                elif influence > 0.5:
+                    probability = "HIGH" 
+                    action_type = "STRONG TRADE"
+                elif influence > 0.3:
+                    probability = "MEDIUM"
+                    action_type = "MODERATE TRADE"
+                else:
+                    probability = "LOW"
+                    action_type = "WATCH ONLY"
+                
+                # Determine buy/sell bias
+                if "BUY" in signal or "SUPPORT" in signal:
+                    bias = "BUY ZONE"
+                    zone_color = "🟢"
+                elif "SELL" in signal or "RESISTANCE" in signal or "BREAKOUT" in signal:
+                    bias = "SELL ZONE" 
+                    zone_color = "🔴"
+                else:
+                    bias = "NEUTRAL ZONE"
+                    zone_color = "🟡"
+                
+                high_prob_times.append({
+                    "time": time_window,
+                    "planet": planet,
+                    "signal": signal,
+                    "probability": probability,
+                    "action_type": action_type,
+                    "bias": bias,
+                    "zone_color": zone_color,
+                    "influence": influence,
+                    "price": level.get("price", current_price)
+                })
+        except Exception as e:
+            st.warning(f"Error processing intraday levels: {e}")
+    
+    # Sort by priority and distance
+    try:
+        sell_zones.sort(key=lambda x: (x["priority"], x["distance"]))
+        buy_zones.sort(key=lambda x: (x["priority"], x["distance"]))
+        high_prob_times.sort(key=lambda x: x["time"])
+    except Exception as e:
+        st.warning(f"Error sorting zones: {e}")
     
     return sell_zones, buy_zones, high_prob_times
 
@@ -414,24 +437,42 @@ def get_price_effect(planet, degree):
 
 def generate_daily_planetary_report(symbol, current_price, tehran_time):
     """Generate focused daily planetary cycles report"""
-    # Time conversions
-    ist_time = tehran_time + timedelta(hours=2)
-    utc_time = tehran_time - timedelta(hours=3, minutes=30)
+    try:
+        # Time conversions
+        ist_time = tehran_time + timedelta(hours=2)
+        utc_time = tehran_time - timedelta(hours=3, minutes=30)
+        
+        # Get planetary data
+        julian_day = swe.julday(utc_time.year, utc_time.month, utc_time.day, 
+                               utc_time.hour + utc_time.minute/60 + utc_time.second/3600)
+        
+        planet_data = get_planetary_positions_today(julian_day)
+        if not planet_data:
+            st.error("Failed to get planetary data")
+            return None, None, None, None, None, None, None
+            
+        price_levels = calculate_planetary_price_levels(planet_data, current_price, symbol)
+        daily_cycles = calculate_todays_time_cycles(planet_data, ist_time)
+        intraday_levels = calculate_intraday_support_levels(current_price, planet_data, ist_time)
+        
+        # Ensure all data structures are valid
+        if not price_levels:
+            price_levels = {}
+        if not daily_cycles:
+            daily_cycles = []
+        if not intraday_levels:
+            intraday_levels = []
+        
+        # Get trading zones and high-probability times
+        sell_zones, buy_zones, high_prob_times = identify_day_trading_zones(price_levels, current_price, intraday_levels)
+        
+    except Exception as e:
+        st.error(f"Error in data calculation: {e}")
+        return None, None, None, None, None, None, None
     
-    # Get planetary data
-    julian_day = swe.julday(utc_time.year, utc_time.month, utc_time.day, 
-                           utc_time.hour + utc_time.minute/60 + utc_time.second/3600)
-    
-    planet_data = get_planetary_positions_today(julian_day)
-    price_levels = calculate_planetary_price_levels(planet_data, current_price, symbol)
-    daily_cycles = calculate_todays_time_cycles(planet_data, ist_time)
-    intraday_levels = calculate_intraday_support_levels(current_price, planet_data, ist_time)
-    
-    # Get trading zones and high-probability times
-    sell_zones, buy_zones, high_prob_times = identify_day_trading_zones(price_levels, current_price, intraday_levels)
-    
-    # Generate report
-    report = f"""
+    try:
+        # Generate report
+        report = f"""
 # 🌟 Daily Planetary Cycles - Indian Intraday Trading
 ## {symbol} Trading - {tehran_time.strftime('%Y-%m-%d')}
 
@@ -446,15 +487,25 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 | Planet | Position | Major Resist | Primary Resist | Current | Primary Support | Major Support | Strength |
 |--------|----------|--------------|----------------|---------|-----------------|---------------|----------|"""
-    
-    for planet_name, data in price_levels.items():
-        levels = data["levels"]
         
-        report += f"""
-| **{planet_name}** | {data['sign']} | {levels['Major_Resistance']:,.0f} | {levels['Primary_Resistance']:,.0f} | {levels['Current_Level']:,.0f} | {levels['Primary_Support']:,.0f} | {levels['Major_Support']:,.0f} | {data['strength']:.0f}% |"""
+        if price_levels:
+            for planet_name, data in price_levels.items():
+                try:
+                    levels = data.get("levels", {})
+                    sign = data.get("sign", "Unknown")
+                    strength = data.get("strength", 50)
+                    
+                    report += f"""
+| **{planet_name}** | {sign} | {levels.get('Major_Resistance', current_price):,.0f} | {levels.get('Primary_Resistance', current_price):,.0f} | {levels.get('Current_Level', current_price):,.0f} | {levels.get('Primary_Support', current_price):,.0f} | {levels.get('Major_Support', current_price):,.0f} | {strength:.0f}% |"""
+                except Exception as e:
+                    st.warning(f"Error processing planet {planet_name}: {e}")
+                    continue
+        else:
+            report += """
+| No data | - | - | - | - | - | - | - |"""
 
-    # Intraday time-based planetary levels
-    report += f"""
+        # Intraday time-based planetary levels
+        report += f"""
 
 ---
 
@@ -462,16 +513,23 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 | Time (IST) | Price Level | Planet Level | Trading Signal | Influence |
 |------------|-------------|--------------|----------------|-----------|"""
-    
-    for level in intraday_levels[:15]:  # Show next 15 time-based levels
-        time_str = level["time"].strftime("%H:%M")
-        influence_str = f"{level['influence_pct']:+.2f}%"
         
-        report += f"""
+        if intraday_levels:
+            for level in intraday_levels[:15]:  # Show next 15 time-based levels
+                try:
+                    time_str = level["time"].strftime("%H:%M")
+                    influence_str = f"{level['influence_pct']:+.2f}%"
+                    
+                    report += f"""
 | **{time_str}** | {level['price']:,.0f} | {level['planet']} {level['level_type']} | {level['signal']} | {influence_str} |"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No intraday levels | - | - | - | - |"""
 
-    # Day Resistance Sell Zones (Highlighted)
-    report += f"""
+        # Day Resistance Sell Zones (Highlighted)
+        report += f"""
 
 ---
 
@@ -479,16 +537,23 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 | Priority | Planet Level | Price | Distance | Strength | Zone Quality | Action |
 |----------|--------------|-------|----------|----------|--------------|--------|"""
-    
-    for zone in sell_zones[:8]:  # Top 8 sell zones
-        priority_emoji = "🚨" if zone["priority"] == 1 else "⚠️" if zone["priority"] == 2 else "📊"
-        action = f"🔴 SELL at {zone['price']:,.0f}" if zone["priority"] <= 2 else "🟡 MONITOR"
         
-        report += f"""
+        if sell_zones:
+            for zone in sell_zones[:8]:  # Top 8 sell zones
+                try:
+                    priority_emoji = "🚨" if zone["priority"] == 1 else "⚠️" if zone["priority"] == 2 else "📊"
+                    action = f"🔴 SELL at {zone['price']:,.0f}" if zone["priority"] <= 2 else "🟡 MONITOR"
+                    
+                    report += f"""
 | {priority_emoji} P{zone['priority']} | {zone['planet']} {zone['level_name']} | **{zone['price']:,.0f}** | +{zone['distance']:,.0f} (+{zone['distance_pct']:.2f}%) | {zone['strength']:.0f}% | {zone['zone_strength']} | {action} |"""
-    
-    # Day Support Buy Zones (Highlighted)
-    report += f"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No sell zones | - | - | - | - | - | - |"""
+        
+        # Day Support Buy Zones (Highlighted)
+        report += f"""
 
 ---
 
@@ -496,16 +561,23 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 | Priority | Planet Level | Price | Distance | Strength | Zone Quality | Action |
 |----------|--------------|-------|----------|----------|--------------|--------|"""
-    
-    for zone in buy_zones[:8]:  # Top 8 buy zones
-        priority_emoji = "🚨" if zone["priority"] == 1 else "⚠️" if zone["priority"] == 2 else "📊"
-        action = f"🟢 BUY at {zone['price']:,.0f}" if zone["priority"] <= 2 else "🟡 MONITOR"
         
-        report += f"""
+        if buy_zones:
+            for zone in buy_zones[:8]:  # Top 8 buy zones
+                try:
+                    priority_emoji = "🚨" if zone["priority"] == 1 else "⚠️" if zone["priority"] == 2 else "📊"
+                    action = f"🟢 BUY at {zone['price']:,.0f}" if zone["priority"] <= 2 else "🟡 MONITOR"
+                    
+                    report += f"""
 | {priority_emoji} P{zone['priority']} | {zone['planet']} {zone['level_name']} | **{zone['price']:,.0f}** | -{zone['distance']:,.0f} (-{zone['distance_pct']:.2f}%) | {zone['strength']:.0f}% | {zone['zone_strength']} | {action} |"""
-    
-    # High Probability Time Windows
-    report += f"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No buy zones | - | - | - | - | - | - |"""
+
+        # High Probability Time Windows
+        report += f"""
 
 ---
 
@@ -513,25 +585,32 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 | Time (IST) | Zone Type | Planet Signal | Probability | Action Type | Price Target | Trade Setup |
 |------------|-----------|---------------|-------------|-------------|--------------|-------------|"""
-    
-    for time_window in high_prob_times[:12]:  # Next 12 high-probability windows
-        time_str = time_window["time"].strftime("%H:%M")
         
-        trade_setup = ""
-        if time_window["probability"] == "VERY HIGH":
-            trade_setup = "🔥 PRIME ENTRY"
-        elif time_window["probability"] == "HIGH":
-            trade_setup = "⚡ STRONG SIGNAL"
-        elif time_window["probability"] == "MEDIUM":
-            trade_setup = "📊 MODERATE SIGNAL"
-        else:
-            trade_setup = "👀 WATCH ONLY"
-        
-        report += f"""
+        if high_prob_times:
+            for time_window in high_prob_times[:12]:  # Next 12 high-probability windows
+                try:
+                    time_str = time_window["time"].strftime("%H:%M")
+                    
+                    trade_setup = ""
+                    if time_window["probability"] == "VERY HIGH":
+                        trade_setup = "🔥 PRIME ENTRY"
+                    elif time_window["probability"] == "HIGH":
+                        trade_setup = "⚡ STRONG SIGNAL"
+                    elif time_window["probability"] == "MEDIUM":
+                        trade_setup = "📊 MODERATE SIGNAL"
+                    else:
+                        trade_setup = "👀 WATCH ONLY"
+                    
+                    report += f"""
 | **{time_str}** | {time_window['zone_color']} {time_window['bias']} | {time_window['planet']} {time_window['signal']} | {time_window['probability']} | {time_window['action_type']} | {time_window['price']:,.0f} | {trade_setup} |"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No time windows | - | - | - | - | - | - |"""
 
-    # Today's critical time cycles
-    report += f"""
+        # Today's critical time cycles
+        report += f"""
 
 ---
 
@@ -539,75 +618,61 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 | Time (IST) | Planet | Event | Trading Action | Expected Move | Hours Away |
 |------------|--------|-------|----------------|---------------|------------|"""
-    
-    for cycle in daily_cycles[:10]:
-        time_str = cycle["time_ist"].strftime("%H:%M")
-        hours_str = f"{cycle['hours_away']:+.1f}h"
         
-        report += f"""
-| **{time_str}** | {cycle['planet']} | @ {cycle['target_degree']:.0f}° | {cycle['trading_action']} | {cycle['price_effect']} | {hours_str} |"""
-
-    # Immediate trading opportunities
-    report += f"""
-
----
-
-## 🎯 Immediate Trading Opportunities (Within 3% Range)
-
-| Planet Level | Price | Distance | % Move | Action |
-|--------------|-------|----------|--------|--------|"""
-    
-    opportunity_count = 0
-    for planet_name, data in price_levels.items():
-        levels = data["levels"]
-        for level_name, level_price in levels.items():
-            if level_name not in ["Current_Level"] and opportunity_count < 8:
-                distance_pct = abs((level_price - current_price) / current_price) * 100
-                if distance_pct <= 3.0:
-                    distance = level_price - current_price
-                    action = "🚀 BUY ZONE" if distance < 0 else "🛑 SELL ZONE"
-                    if abs(distance_pct) <= 1.0:
-                        action = "⚡ PRIME TARGET"
-                    
-                    level_display = level_name.replace("_", " ")
+        if daily_cycles:
+            for cycle in daily_cycles[:10]:
+                try:
+                    time_str = cycle["time_ist"].strftime("%H:%M")
+                    hours_str = f"{cycle['hours_away']:+.1f}h"
                     
                     report += f"""
-| {planet_name} {level_display} | {level_price:,.0f} | {distance:+.0f} | {distance_pct:+.2f}% | {action} |"""
-                    
-                    opportunity_count += 1
-    
-    if opportunity_count == 0:
-        report += f"""
-| No levels within 3% | Current market | 0 | 0.00% | Monitor wider ranges |"""
+| **{time_str}** | {cycle['planet']} | @ {cycle['target_degree']:.0f}° | {cycle['trading_action']} | {cycle['price_effect']} | {hours_str} |"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No major cycles today | - | - | - | - | - |"""
 
-    # Key insights
-    strongest_planet = max(price_levels.items(), key=lambda x: x[1]['strength'])[0]
-    
-    report += f"""
+        # Add summary
+        strongest_planet = "Sun"  # Default
+        if price_levels:
+            try:
+                strongest_planet = max(price_levels.items(), key=lambda x: x[1].get('strength', 0))[0]
+            except:
+                strongest_planet = "Sun"
+        
+        next_event_text = "No major events today"
+        if daily_cycles:
+            try:
+                next_event_text = f"{daily_cycles[0]['time_ist'].strftime('%H:%M IST')} - {daily_cycles[0]['planet']} @ {daily_cycles[0]['target_degree']:.0f}°"
+            except:
+                pass
+
+        report += f"""
 
 ---
 
 ## 💡 Today's Key Insights
 
 ### 🎯 Dominant Influence: **{strongest_planet}**
-- **Strength**: {price_levels[strongest_planet]['strength']:.0f}%
-- **Position**: {price_levels[strongest_planet]['sign']}
 - **Primary Action**: Focus on {strongest_planet.lower()} levels for best trades
 
 ### 📊 Trading Summary:
-- **Bullish Bias**: Look for support at lower planetary levels
-- **Bearish Bias**: Watch for resistance at higher planetary levels  
-- **Range Trading**: Use minor levels for scalping opportunities
-- **Position Trading**: Use major levels for swing trades
+- **Sell Zones**: {len(sell_zones)} resistance levels identified
+- **Buy Zones**: {len(buy_zones)} support levels identified  
+- **High Prob Windows**: {len(high_prob_times)} time-based opportunities
+- **Active Cycles**: {len(daily_cycles)} planetary events today
 
 ---
 
-> **🚨 Next Major Event**: {daily_cycles[0]['time_ist'].strftime('%H:%M IST')} - {daily_cycles[0]['planet']} @ {daily_cycles[0]['target_degree']:.0f}°  
-> **Expected Move**: {daily_cycles[0]['price_effect']}  
-> **Action**: {daily_cycles[0]['trading_action']}
+> **🚨 Next Major Event**: {next_event_text}
 """
-    
-    return report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times
+        
+        return report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times
+        
+    except Exception as e:
+        st.error(f"Error generating report: {e}")
+        return None, None, None, None, None, None, None
 
 # Streamlit App
 st.set_page_config(layout="wide", page_title="Daily Planetary Cycles")
@@ -693,27 +758,107 @@ if st.button("🚀 Generate Today's Report", type="primary"):
                 st.info("No immediate support levels")
         
         # Simple chart
-        st.markdown("### 📊 Support/Resistance Levels")
-        
-        chart_data = []
-        for planet, data in price_levels.items():
-            chart_data.append({
-                "Planet": planet,
-                "Support": data["levels"]["Primary_Support"],
-                "Current": current_price,
-                "Resistance": data["levels"]["Primary_Resistance"]
-            })
-        
-        df = pd.DataFrame(chart_data)
+        st.markdown("### 📊 Support/Resistance Levels with Buy/Sell Zones")
         
         fig = go.Figure()
-        fig.add_trace(go.Bar(name='Support', x=df['Planet'], y=df['Support'], marker_color='green'))
-        fig.add_trace(go.Bar(name='Resistance', x=df['Planet'], y=df['Resistance'], marker_color='red'))
-        fig.add_hline(y=current_price, line_dash="dash", line_color="orange", 
+        
+        # Add support levels (green)
+        support_prices = []
+        support_labels = []
+        for zone in buy_zones[:5]:
+            support_prices.append(zone["price"])
+            support_labels.append(f"{zone['planet']} {zone['level_name']}")
+        
+        if support_prices:
+            fig.add_trace(go.Scatter(
+                x=support_labels,
+                y=support_prices,
+                mode='markers',
+                marker=dict(size=15, color='green', symbol='triangle-up'),
+                name='🟢 BUY ZONES',
+                text=[f"{p:,.0f}" for p in support_prices],
+                textposition="middle center"
+            ))
+        
+        # Add resistance levels (red)
+        resistance_prices = []
+        resistance_labels = []
+        for zone in sell_zones[:5]:
+            resistance_prices.append(zone["price"])
+            resistance_labels.append(f"{zone['planet']} {zone['level_name']}")
+        
+        if resistance_prices:
+            fig.add_trace(go.Scatter(
+                x=resistance_labels,
+                y=resistance_prices,
+                mode='markers',
+                marker=dict(size=15, color='red', symbol='triangle-down'),
+                name='🔴 SELL ZONES',
+                text=[f"{p:,.0f}" for p in resistance_prices],
+                textposition="middle center"
+            ))
+        
+        # Add current price line
+        fig.add_hline(y=current_price, line_dash="dash", line_color="orange", line_width=3,
                       annotation_text=f"Current: {current_price:,.0f}")
         
-        fig.update_layout(title=f"{symbol} Support/Resistance Levels", height=400)
+        # Add buy/sell zones as colored areas
+        if support_prices:
+            min_support = min(support_prices)
+            fig.add_hrect(y0=min_support*0.995, y1=min_support*1.005, 
+                         fillcolor="green", opacity=0.2, 
+                         annotation_text="🟢 STRONG BUY ZONE", annotation_position="top left")
+        
+        if resistance_prices:
+            max_resistance = max(resistance_prices)
+            fig.add_hrect(y0=max_resistance*0.995, y1=max_resistance*1.005, 
+                         fillcolor="red", opacity=0.2,
+                         annotation_text="🔴 STRONG SELL ZONE", annotation_position="bottom left")
+        
+        fig.update_layout(
+            title=f"{symbol} Buy/Sell Zones with Planetary Levels", 
+            height=500,
+            yaxis_title="Price Points",
+            xaxis_title="Planetary Levels"
+        )
         st.plotly_chart(fig, use_container_width=True)
+        
+        # High Probability Time Windows
+        st.markdown("### ⏰ HIGH PROBABILITY TIME WINDOWS")
+        
+        # Create columns for time windows
+        time_cols = st.columns(4)
+        
+        for i, time_window in enumerate(high_prob_times[:8]):  # Next 8 high probability windows
+            col = time_cols[i % 4]
+            
+            with col:
+                time_str = time_window["time"].strftime("%H:%M")
+                zone_color = time_window["zone_color"] 
+                bias = time_window["bias"]
+                probability = time_window["probability"]
+                
+                # Color coding based on zone type
+                if "BUY" in bias:
+                    card_color = "#d4edda"  # Light green
+                    border_color = "#28a745"
+                elif "SELL" in bias:
+                    card_color = "#f8d7da"  # Light red
+                    border_color = "#dc3545" 
+                else:
+                    card_color = "#fff3cd"  # Light yellow
+                    border_color = "#ffc107"
+                
+                st.markdown(f"""
+                <div style="background-color:{card_color}; padding:10px; border-radius:8px; margin:5px 0; border:2px solid {border_color};">
+                <div style="text-align:center;">
+                <strong style="font-size:1.1em;">🕐 {time_str} IST</strong><br>
+                <span style="font-size:1.2em;">{zone_color} <strong>{bias}</strong></span><br>
+                <span style="color:#666; font-size:0.9em;">{time_window['planet']} | {probability}</span><br>
+                <span style="font-size:1.1em; font-weight:bold;">{time_window['price']:,.0f}</span>
+                </div>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Highlight next few intraday levels
         st.markdown("### ⏰ Next Intraday Trading Levels")
@@ -758,34 +903,60 @@ with st.sidebar:
     - ⚡ **Scalping levels** 
     - 🎯 **Intraday range**: ±0.3% to ±5%
     
-    **Level Guide:**
-    - 🟢 **Support** = Buy zones
-    - 🔴 **Resistance** = Sell zones  
+    **Zone Guide:**
+    - 🔴 **SELL ZONES** = Resistance levels
+    - 🟢 **BUY ZONES** = Support levels  
     - ⚡ **Prime targets** = Within ±1%
     """)
     
-    st.markdown("### ⏰ Intraday Time Levels")
+    st.markdown("### 🎯 Trading Zone Priorities")
     st.markdown("""
-    **Planetary Time Cycles:**
-    - 🌙 **Moon**: Every 1.5h - Scalping
-    - ☿ **Mercury**: Every 3h - News levels
-    - ♀ **Venus**: Every 4h - Value zones
-    - ♂ **Mars**: Every 2h - Breakout levels
-    - ♃ **Jupiter**: Every 6h - Major levels
+    **Priority Levels:**
+    - 🚨 **P1** - Immediate action (±1.5%)
+    - ⚠️ **P2** - Strong signal (±3.0%) 
+    - 📊 **P3** - Monitor level (>3.0%)
     
-    **Trading Signals:**
-    - **PRIME SCALP** - Best scalping opportunity
-    - **NEWS WATCH** - Monitor for news impact
-    - **VALUE BUY/SELL** - Value-based trades
-    - **MOMENTUM TRADE** - Breakout opportunities
+    **Zone Quality:**
+    - **HIGH** - Strength >70%
+    - **MEDIUM** - Strength 50-70%
+    - **LOW** - Strength <50%
     """)
     
-    st.markdown("### 📊 Example Levels")
+    st.markdown("### ⏰ Time Window Types")
+    st.markdown("""
+    **Probability Levels:**
+    - 🔥 **VERY HIGH** - Prime entries (>0.7%)
+    - ⚡ **HIGH** - Strong signals (>0.5%)
+    - 📊 **MEDIUM** - Moderate trades (>0.3%)
+    - 👀 **LOW** - Watch only (<0.3%)
+    
+    **Planetary Cycles:**
+    - 🌙 **Moon**: 1.5h - Scalping zones
+    - ☿ **Mercury**: 3h - News impact zones
+    - ♀ **Venus**: 4h - Value trading zones
+    - ♂ **Mars**: 2h - Breakout zones
+    - ♃ **Jupiter**: 6h - Major support/resistance
+    """)
+    
+    st.markdown("### 🎯 Example Trading Setup")
     st.markdown("""
     ```
-    10:30 IST - 24,520 - Moon Support - PRIME SCALP
-    11:45 IST - 24,680 - Mercury Level - NEWS WATCH  
-    13:20 IST - 24,590 - Venus Zone - VALUE BUY
-    14:15 IST - 24,745 - Mars Breakout - MOMENTUM
+    🚨 SELL ZONE ALERT:
+    10:30 IST - Mars Resistance 
+    Price: 24,680 (+0.35%)
+    Action: SELL on approach
+    
+    🚨 BUY ZONE ALERT:  
+    13:20 IST - Venus Support
+    Price: 24,520 (-0.30%)
+    Action: BUY on test
     ```
+    """)
+    
+    st.markdown("### ⚠️ Risk Management")
+    st.markdown("""
+    - Use **stop losses** at next level
+    - **Position size** based on zone strength
+    - **Time windows** show best entry/exit
+    - **Multiple confirmations** for major trades
     """)
