@@ -46,11 +46,13 @@ def get_planetary_positions(julian_day):
                 "distance": pos[2],
                 "speed": pos[3],
                 "sign": get_zodiac_sign(pos[0]),
-                "degree_in_sign": pos[0] % 30
+                "degree_in_sign": pos[0] % 30,
+                "retrograde": pos[3] < 0  # Negative speed means retrograde
             }
         except Exception as e:
             st.warning(f"Error calculating {name}: {e}")
-            planet_data[name] = {"longitude": 0, "latitude": 0, "distance": 1, "speed": 0.5, "sign": "Aries", "degree_in_sign": 0}
+            planet_data[name] = {"longitude": 0, "latitude": 0, "distance": 1, "speed": 0.5, 
+                                "sign": "Aries", "degree_in_sign": 0, "retrograde": False}
     
     return planet_data
 
@@ -59,6 +61,279 @@ def get_zodiac_sign(longitude):
     signs = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
             "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
     return signs[int(longitude // 30)]
+
+def calculate_planetary_transits(selected_date, tehran_time):
+    """Calculate major planetary transits for the selected date"""
+    transits = []
+    
+    # Convert to UTC
+    utc_time = tehran_time - timedelta(hours=3, minutes=30)
+    start_jd = swe.julday(utc_time.year, utc_time.month, utc_time.day, 0)
+    end_jd = start_jd + 1  # End of day
+    
+    planets = {
+        "Mercury": swe.MERCURY, "Venus": swe.VENUS, "Mars": swe.MARS,
+        "Jupiter": swe.JUPITER, "Saturn": swe.SATURN, "Uranus": swe.URANUS,
+        "Neptune": swe.NEPTUNE, "Pluto": swe.PLUTO
+    }
+    
+    # Check for sign changes and stations
+    for planet_name, planet_id in planets.items():
+        try:
+            # Get position at start of day
+            pos_start = swe.calc_ut(start_jd, planet_id)[0]
+            lon_start = pos_start[0] % 360
+            speed_start = pos_start[3]
+            
+            # Get position at end of day
+            pos_end = swe.calc_ut(end_jd, planet_id)[0]
+            lon_end = pos_end[0] % 360
+            speed_end = pos_end[3]
+            
+            # Check for sign change
+            sign_start = int(lon_start // 30)
+            sign_end = int(lon_end // 30)
+            
+            if sign_start != sign_end:
+                # Approximate time of sign change
+                # This is a simplified calculation
+                sign_change_degree = (sign_end + 1) * 30
+                if sign_change_degree > 360:
+                    sign_change_degree = 30
+                
+                # Linear approximation
+                total_change = lon_end - lon_start
+                if total_change == 0:
+                    continue
+                    
+                fraction = (sign_change_degree - lon_start) / total_change
+                jd_change = start_jd + fraction
+                
+                # Convert to datetime
+                jd_to_dt = swe.jdut1_to_utc(jd_change)
+                transit_time = datetime(jd_to_dt[0], jd_to_dt[1], jd_to_dt[2], 
+                                       int(jd_to_dt[3]), int(jd_to_dt[4]), int(jd_to_dt[5]))
+                
+                # Convert to IST
+                ist_time = transit_time + timedelta(hours=5, minutes=30)
+                
+                transits.append({
+                    "time": ist_time,
+                    "planet": planet_name,
+                    "type": "Sign Change",
+                    "description": f"Enters {get_zodiac_sign(sign_change_degree)}",
+                    "market_impact": get_sign_change_impact(planet_name, get_zodiac_sign(sign_change_degree))
+                })
+            
+            # Check for station (retrograde/direct change)
+            if (speed_start < 0 and speed_end > 0) or (speed_start > 0 and speed_end < 0):
+                # Station point - simplified calculation
+                station_time = tehran_time + timedelta(hours=12)  # Approximate middle of day
+                direction = "Direct" if speed_end > 0 else "Retrograde"
+                
+                transits.append({
+                    "time": station_time,
+                    "planet": planet_name,
+                    "type": "Station",
+                    "description": f"Turns {direction}",
+                    "market_impact": get_station_impact(planet_name, direction)
+                })
+                
+        except Exception as e:
+            continue
+    
+    # Sort transits by time
+    transits.sort(key=lambda x: x["time"])
+    return transits
+
+def get_sign_change_impact(planet, sign):
+    """Get market impact of planet entering a sign"""
+    impacts = {
+        "Mercury": {
+            "Aries": "Quick market movements, news-driven volatility",
+            "Taurus": "Stable prices, value investing focus",
+            "Gemini": "High communication, multiple market narratives",
+            "Cancer": "Defensive trading, emotional swings",
+            "Leo": "Confident markets, bold moves",
+            "Virgo": "Analytical trading, precision entries",
+            "Libra": "Balanced markets, partnership deals",
+            "Scorpio": "Intense moves, hidden influences",
+            "Sagittarius": "Optimistic trends, expansion",
+            "Capricorn": "Conservative approach, long-term focus",
+            "Aquarius": "Innovative trading, tech focus",
+            "Pisces": "Unclear trends, illusionary moves"
+        },
+        "Venus": {
+            "Aries": "Impulsive buying, aggressive value",
+            "Taurus": "Strong value support, steady gains",
+            "Gemini": "Dual markets, conflicting signals",
+            "Cancer": "Protective trading, safe havens",
+            "Leo": "Luxury buying, confidence high",
+            "Virgo": "Critical value assessment",
+            "Libra": "Partnership deals, balanced trades",
+            "Scorpio": "Deep value, transformation",
+            "Sagittarius": "Optimistic value, growth focus",
+            "Capricorn": "Conservative value, long-term",
+            "Aquarius": "Innovative value, tech stocks",
+            "Pisces": "Illusory value, deception risk"
+        }
+    }
+    
+    return impacts.get(planet, {}).get(sign, "Moderate market influence")
+
+def get_station_impact(planet, direction):
+    """Get market impact of planetary station"""
+    impacts = {
+        "Mercury": {
+            "Direct": "Clear communication, decisive moves",
+            "Retrograde": "Confusion, false signals, delays"
+        },
+        "Venus": {
+            "Direct": "Value appreciation, buying pressure",
+            "Retrograde": "Value reassessment, selling pressure"
+        },
+        "Mars": {
+            "Direct": "Aggressive action, momentum builds",
+            "Retrograde": "Energy withdrawal, consolidation"
+        },
+        "Jupiter": {
+            "Direct": "Expansion, optimism, growth",
+            "Retrograde": "Contraction, reassessment, caution"
+        },
+        "Saturn": {
+            "Direct": "Structure, discipline, restrictions",
+            "Retrograde": "Release of pressure, easing"
+        }
+    }
+    
+    return impacts.get(planet, {}).get(direction, "Market direction shift")
+
+def calculate_detailed_timing(planet_data, base_time_ist, market_type):
+    """Calculate detailed timing events throughout the day"""
+    timing_events = []
+    
+    # Moon phases and aspects (every 30 minutes)
+    moon_deg = planet_data["Moon"]["longitude"]
+    moon_speed = planet_data["Moon"]["speed"] / 24  # degrees per hour
+    
+    for minute_offset in range(0, 1440, 30):  # Every 30 minutes for 24 hours
+        target_time = base_time_ist + timedelta(minutes=minute_offset)
+        
+        # Skip if outside market hours
+        if not is_within_market_hours(target_time, market_type):
+            continue
+            
+        future_moon_deg = (moon_deg + (moon_speed * minute_offset / 60)) % 360
+        
+        # Moon phase calculation
+        sun_deg = planet_data["Sun"]["longitude"]
+        moon_phase_angle = (future_moon_deg - sun_deg) % 360
+        
+        # Determine moon phase
+        if 0 <= moon_phase_angle < 45:
+            phase = "New Moon"
+            impact = "New beginnings, trend initiation"
+        elif 45 <= moon_phase_angle < 90:
+            phase = "Waxing Crescent"
+            impact = "Building energy, gradual growth"
+        elif 90 <= moon_phase_angle < 135:
+            phase = "First Quarter"
+            impact = "Decision points, action required"
+        elif 135 <= moon_phase_angle < 180:
+            phase = "Waxing Gibbous"
+            impact = "Momentum building, preparation"
+        elif 180 <= moon_phase_angle < 225:
+            phase = "Full Moon"
+            impact = "Culmination, high emotion"
+        elif 225 <= moon_phase_angle < 270:
+            phase = "Waning Gibbous"
+            impact = "Release, sharing results"
+        elif 270 <= moon_phase_angle < 315:
+            phase = "Last Quarter"
+            impact = "Reassessment, letting go"
+        else:
+            phase = "Waning Crescent"
+            impact = "Rest, preparation for new cycle"
+        
+        # Calculate Moon aspects with other planets
+        aspects = []
+        for planet_name, planet_info in planet_data.items():
+            if planet_name == "Moon":
+                continue
+                
+            planet_deg = planet_info["longitude"]
+            angle = abs(future_moon_deg - planet_deg) % 360
+            if angle > 180:
+                angle = 360 - angle
+                
+            # Check for major aspects
+            if abs(angle - 0) < 2:  # Conjunction
+                aspects.append(f"Conjunct {planet_name}")
+            elif abs(angle - 60) < 2:  # Sextile
+                aspects.append(f"Sextile {planet_name}")
+            elif abs(angle - 90) < 2:  # Square
+                aspects.append(f"Square {planet_name}")
+            elif abs(angle - 120) < 2:  # Trine
+                aspects.append(f"Trine {planet_name}")
+            elif abs(angle - 180) < 2:  # Opposition
+                aspects.append(f"Opposite {planet_name}")
+        
+        # Add timing event
+        timing_events.append({
+            "time": target_time,
+            "moon_phase": phase,
+            "moon_phase_angle": moon_phase_angle,
+            "impact": impact,
+            "aspects": aspects,
+            "intensity": len(aspects) + (1 if phase in ["New Moon", "Full Moon"] else 0)
+        })
+    
+    # Add planetary hour changes
+    for hour_offset in range(0, 24):
+        target_time = base_time_ist + timedelta(hours=hour_offset)
+        
+        if not is_within_market_hours(target_time, market_type):
+            continue
+            
+        # Calculate planetary hour ruler
+        hour_number = (target_time.hour + target_time.minute / 60) % 24
+        planetary_hour_ruler = get_planetary_hour_ruler(hour_number, base_time_ist)
+        
+        timing_events.append({
+            "time": target_time,
+            "type": "Planetary Hour",
+            "ruler": planetary_hour_ruler,
+            "impact": get_planetary_hour_impact(planetary_hour_ruler)
+        })
+    
+    # Sort by time and intensity
+    timing_events.sort(key=lambda x: (x["time"], -x.get("intensity", 0)))
+    return timing_events
+
+def get_planetary_hour_ruler(hour_number, base_date):
+    """Get the planetary ruler for a given hour"""
+    # Planetary hour order: Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon
+    planets = ["Saturn", "Jupiter", "Mars", "Sun", "Venus", "Mercury", "Moon"]
+    
+    # Day ruler (based on day of week)
+    day_ruler_index = (base_date.weekday() + 1) % 7  # Sunday=0, Monday=1, etc.
+    
+    # Calculate hour ruler
+    hour_ruler_index = (day_ruler_index + hour_number) % 7
+    return planets[hour_ruler_index]
+
+def get_planetary_hour_impact(planet):
+    """Get market impact of planetary hour"""
+    impacts = {
+        "Saturn": "Restriction, caution, long-term focus",
+        "Jupiter": "Expansion, optimism, growth opportunities",
+        "Mars": "Action, aggression, momentum trading",
+        "Sun": "Confidence, leadership, major moves",
+        "Venus": "Value, harmony, relationship-based trades",
+        "Mercury": "Communication, news, quick trades",
+        "Moon": "Emotion, intuition, retail trading"
+    }
+    return impacts.get(planet, "Moderate market activity")
 
 def calculate_planetary_price_levels(planet_data, current_price, symbol):
     """Calculate realistic intraday price levels based on actual planetary positions"""
@@ -156,7 +431,8 @@ def calculate_planetary_price_levels(planet_data, current_price, symbol):
                 "influence": PLANETARY_CYCLES[planet_name]["influence"],
                 "strength": min(max(strength, 10), 100),  # Bound between 10-100%
                 "bias": bias,
-                "multiplier": total_multiplier
+                "multiplier": total_multiplier,
+                "retrograde": data.get("retrograde", False)
             }
     
     return price_levels
@@ -211,10 +487,10 @@ def calculate_time_cycles(planet_data, base_time_ist):
 def get_trading_action(planet, degree):
     """Get specific trading actions for planetary cycles"""
     if planet == "Moon":
-        if degree == 0: return "🌑 REDUCE SIZE - high volatility expected"
-        elif degree == 90: return "🌓 REVERSAL TRADES - fade extremes"
-        elif degree == 180: return "🌕 MAJOR REVERSAL - big moves"
-        elif degree == 270: return "🌗 RANGE TRADING - consolidation"
+        if degree == 0: return "🌑 NEW MOON - Trend initiation"
+        elif degree == 90: return "🌓 FIRST QUARTER - Decision point"
+        elif degree == 180: return "🌕 FULL MOON - Culmination"
+        elif degree == 270: return "🌗 LAST QUARTER - Reassessment"
     elif planet == "Venus":
         if degree in [0, 90]: return "🛒 VALUE BUY - look for entries"
         elif degree == 180: return "🚨 SELL RALLIES - resistance area"
@@ -510,11 +786,13 @@ def generate_planetary_report(symbol, current_price, tehran_time, market_type):
         planet_data = get_planetary_positions(julian_day)
         if not planet_data:
             st.error("Failed to get planetary data")
-            return None, None, None, None, None, None, None
+            return None, None, None, None, None, None, None, None, None
             
         price_levels = calculate_planetary_price_levels(planet_data, current_price, symbol)
         daily_cycles = calculate_time_cycles(planet_data, ist_time)
         intraday_levels = calculate_intraday_levels(current_price, planet_data, ist_time)
+        planetary_transits = calculate_planetary_transits(tehran_time.date(), tehran_time)
+        detailed_timing = calculate_detailed_timing(planet_data, ist_time, market_type)
         
         # Ensure all data structures are valid
         if not price_levels:
@@ -523,10 +801,16 @@ def generate_planetary_report(symbol, current_price, tehran_time, market_type):
             daily_cycles = []
         if not intraday_levels:
             intraday_levels = []
+        if not planetary_transits:
+            planetary_transits = []
+        if not detailed_timing:
+            detailed_timing = []
         
         # Filter events based on market type
         daily_cycles_filtered = [cycle for cycle in daily_cycles if is_within_market_hours(cycle['time_ist'], market_type)]
         intraday_levels_filtered = [level for level in intraday_levels if is_within_market_hours(level['time'], market_type)]
+        transits_filtered = [transit for transit in planetary_transits if is_within_market_hours(transit['time'], market_type)]
+        timing_filtered = [timing for timing in detailed_timing if is_within_market_hours(timing['time'], market_type)]
         
         # Get trading zones and high-probability times
         sell_zones, buy_zones, high_prob_times = identify_trading_zones(price_levels, current_price, intraday_levels_filtered)
@@ -536,7 +820,7 @@ def generate_planetary_report(symbol, current_price, tehran_time, market_type):
         
     except Exception as e:
         st.error(f"Error in data calculation: {e}")
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None, None
     
     try:
         # Generate report
@@ -551,20 +835,73 @@ def generate_planetary_report(symbol, current_price, tehran_time, market_type):
 - **Current {symbol} Price**: **{current_price:,.0f}**
 ---
 ## 🌟 Planetary Positions at Report Time
-| Planet      | Longitude (°) | Sign & Degree | Speed (°/day) | Distance (AU) |
-|-------------|---------------|---------------|---------------|---------------|"""
+| Planet      | Longitude (°) | Sign & Degree | Speed (°/day) | Distance (AU) | Motion |
+|-------------|---------------|---------------|---------------|---------------|--------|"""
         
         if planet_data:
             for planet_name, data in planet_data.items():
                 try:
+                    motion = "Retrograde ♃" if data.get("retrograde", False) else "Direct ♈"
                     report += f"""
-| **{planet_name}** | {data['longitude']:.2f}° | {data['sign']} | {data['speed']:.4f} | {data['distance']:.3f} |"""
+| **{planet_name}** | {data['longitude']:.2f}° | {data['sign']} | {data['speed']:.4f} | {data['distance']:.3f} | {motion} |"""
                 except Exception as e:
                     st.warning(f"Error processing planet {planet_name}: {e}")
                     continue
         else:
             report += """
-| No data | - | - | - | - |"""
+| No data | - | - | - | - | - |"""
+        
+        # Planetary Transits Section
+        report += f"""
+---
+## 🔄 Today's Major Planetary Transits
+| Time (IST) | Planet | Transit Type | Description | Market Impact |
+|------------|--------|---------------|-------------|---------------|"""
+        
+        if transits_filtered:
+            for transit in transits_filtered:
+                try:
+                    time_str = transit["time"].strftime("%H:%M")
+                    report += f"""
+| **{time_str}** | {transit['planet']} | {transit['type']} | {transit['description']} | {transit['market_impact']} |"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No major transits today | - | - | - | - |"""
+        
+        # Detailed Timing Section
+        report += f"""
+---
+## ⏱️ Detailed Timing Schedule
+| Time (IST) | Event Type | Details | Market Impact | Intensity |
+|------------|------------|---------|---------------|-----------|"""
+        
+        if timing_filtered:
+            for timing in timing_filtered[:15]:  # Show top 15 timing events
+                try:
+                    time_str = timing["time"].strftime("%H:%M")
+                    
+                    if "moon_phase" in timing:
+                        event_type = f"🌙 {timing['moon_phase']}"
+                        details = f"{timing['moon_phase_angle']:.1f}°"
+                        if timing.get("aspects"):
+                            details += f" | {', '.join(timing['aspects'][:2])}"  # Show first 2 aspects
+                        impact = timing["impact"]
+                        intensity = "🔥" + "🔥" * min(timing.get("intensity", 1), 3)
+                    else:
+                        event_type = f"⏰ {timing['type']}"
+                        details = f"Ruled by {timing['ruler']}"
+                        impact = timing["impact"]
+                        intensity = "⭐" * min(timing.get("intensity", 1), 3)
+                    
+                    report += f"""
+| **{time_str}** | {event_type} | {details} | {impact} | {intensity} |"""
+                except Exception as e:
+                    continue
+        else:
+            report += """
+| No timing events | - | - | - | - |"""
         
         report += f"""
 ---
@@ -747,15 +1084,17 @@ def generate_planetary_report(symbol, current_price, tehran_time, market_type):
 - **Buy Zones**: {len(buy_zones)} support levels identified  
 - **High Prob Windows**: {len(high_prob_times_filtered)} time-based opportunities
 - **Active Cycles**: {len(daily_cycles_filtered)} planetary events today
+- **Major Transits**: {len(transits_filtered)} significant transits today
+- **Timing Events**: {len(timing_filtered)} detailed timing events
 ---
 > **🚨 Next Major Event**: {next_event_text}
 """
         
-        return report, price_levels, daily_cycles_filtered, intraday_levels_filtered, sell_zones, buy_zones, high_prob_times_filtered
+        return report, price_levels, daily_cycles_filtered, intraday_levels_filtered, sell_zones, buy_zones, high_prob_times_filtered, transits_filtered, timing_filtered
         
     except Exception as e:
         st.error(f"Error generating report: {e}")
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None, None
 
 def calculate_planetary_aspects(planet_data):
     """Calculate major planetary aspects"""
@@ -918,9 +1257,9 @@ with preset_col5:
 # Generate report
 if st.button("🚀 Generate Planetary Report", type="primary"):
     try:
-        with st.spinner("🌌 Calculating planetary positions and cycles..."):
+        with st.spinner("🌌 Calculating planetary positions, transits and timing..."):
             start_time = time_module.time()
-            report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times = generate_planetary_report(
+            report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times, transits, timing = generate_planetary_report(
                 symbol, current_price, tehran_time, market_type)
             elapsed_time = time_module.time() - start_time
             
@@ -1103,6 +1442,92 @@ if st.button("🚀 Generate Planetary Report", type="primary"):
                     delta_color=delta_color
                 )
         
+        # Major Transits Section
+        st.markdown("### 🔄 Today's Major Planetary Transits")
+        
+        if transits:
+            transit_cols = st.columns(3)
+            for i, transit in enumerate(transits[:6]):
+                col = transit_cols[i % 3]
+                
+                with col:
+                    time_str = transit["time"].strftime("%H:%M")
+                    transit_type = transit["type"]
+                    description = transit["description"]
+                    impact = transit["market_impact"]
+                    
+                    # Color coding based on transit type
+                    if "Sign Change" in transit_type:
+                        card_color = "#e3f2fd"  # Light blue
+                        border_color = "#2196f3"
+                    elif "Station" in transit_type:
+                        card_color = "#fff3e0"  # Light orange
+                        border_color = "#ff9800"
+                    else:
+                        card_color = "#f3e5f5"  # Light purple
+                        border_color = "#9c27b0"
+                    
+                    st.markdown(f"""
+                    <div style="background-color:{card_color}; padding:10px; border-radius:8px; margin:5px 0; border:2px solid {border_color};">
+                    <div style="text-align:center;">
+                    <strong style="font-size:1.1em;">🕐 {time_str} IST</strong><br>
+                    <span style="font-size:1.0em;"><strong>{transit['planet']}</strong></span><br>
+                    <span style="color:#666; font-size:0.9em;">{transit_type}</span><br>
+                    <span style="font-size:0.9em;">{description}</span><br>
+                    <span style="font-size:0.8em; color:#555;">{impact}</span>
+                    </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No major transits today")
+        
+        # Detailed Timing Events
+        st.markdown("### ⏱️ Detailed Timing Events")
+        
+        if timing:
+            timing_cols = st.columns(4)
+            for i, timing_event in enumerate(timing[:8]):
+                col = timing_cols[i % 4]
+                
+                with col:
+                    time_str = timing_event["time"].strftime("%H:%M")
+                    
+                    if "moon_phase" in timing_event:
+                        event_type = f"🌙 {timing_event['moon_phase']}"
+                        details = f"{timing_event['moon_phase_angle']:.1f}°"
+                        if timing_event.get("aspects"):
+                            details += f"<br>{', '.join(timing_event['aspects'][:2])}"
+                        impact = timing_event["impact"]
+                    else:
+                        event_type = f"⏰ {timing_event['type']}"
+                        details = f"Ruled by {timing_event['ruler']}"
+                        impact = timing_event["impact"]
+                    
+                    # Color coding based on intensity
+                    intensity = timing_event.get("intensity", 1)
+                    if intensity >= 3:
+                        card_color = "#ffebee"  # Light red
+                        border_color = "#f44336"
+                    elif intensity >= 2:
+                        card_color = "#fff8e1"  # Light yellow
+                        border_color = "#ffc107"
+                    else:
+                        card_color = "#e8f5e8"  # Light green
+                        border_color = "#4caf50"
+                    
+                    st.markdown(f"""
+                    <div style="background-color:{card_color}; padding:10px; border-radius:8px; margin:5px 0; border:2px solid {border_color};">
+                    <div style="text-align:center;">
+                    <strong style="font-size:1.1em;">🕐 {time_str} IST</strong><br>
+                    <span style="font-size:1.0em;"><strong>{event_type}</strong></span><br>
+                    <span style="color:#666; font-size:0.8em;">{details}</span><br>
+                    <span style="font-size:0.8em; color:#555;">{impact}</span>
+                    </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No timing events today")
+        
     except Exception as e:
         st.error(f"❌ Error: {e}")
 
@@ -1133,6 +1558,8 @@ with st.sidebar:
     st.markdown("""
     **For Any Selected Date:**
     - 🌍 **Planetary Positions** - Exact degrees
+    - 🔄 **Planetary Transits** - Sign changes, stations
+    - ⏱️ **Detailed Timing** - Moon phases, hours
     - 📊 **Price Levels** - Support/Resistance
     - ⏰ **Time Cycles** - Trading windows
     - 🔗 **Planetary Aspects** - Market influences
@@ -1168,6 +1595,44 @@ with st.sidebar:
     - ♃ **Jupiter**: 6h - Major support/resistance
     """)
     
+    st.markdown("### 🔄 Planetary Transits")
+    st.markdown("""
+    **Major Transit Types:**
+    - **Sign Changes**: Planet enters new sign
+    - **Stations**: Planet turns retrograde/direct
+    
+    **Market Impact:**
+    - **Sign Changes**: New market themes
+    - **Stations**: Direction shifts, reversals
+    - **Combined**: Major trend changes
+    
+    **Key Planets:**
+    - **Mercury**: Communication, news
+    - **Venus**: Value, relationships
+    - **Mars**: Action, aggression
+    - **Jupiter**: Expansion, optimism
+    - **Saturn**: Structure, restriction
+    """)
+    
+    st.markdown("### ⏱️ Detailed Timing")
+    st.markdown("""
+    **Timing Events Include:**
+    - **Moon Phases**: New, Full, Quarters
+    - **Moon Aspects**: With other planets
+    - **Planetary Hours**: Ruler changes
+    - **Intensity Levels**: Based on aspects
+    
+    **Moon Phases:**
+    - **New Moon**: Trend initiation
+    - **Full Moon**: Culmination, emotion
+    - **Quarters**: Decision points
+    
+    **Intensity Scale:**
+    - 🔥🔥🔥 High intensity
+    - 🔥🔥 Medium intensity
+    - 🔥 Low intensity
+    """)
+    
     st.markdown("### 🔗 Planetary Aspects")
     st.markdown("""
     **Major Aspects:**
@@ -1190,4 +1655,5 @@ with st.sidebar:
     - **Time windows** show best entry/exit
     - **Multiple confirmations** for major trades
     - **Date-specific** planetary influences
+    - **Transit timing** for major moves
     """)
