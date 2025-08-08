@@ -666,8 +666,8 @@ def create_planetary_timeline_chart(daily_cycles, current_time):
     
     fig = go.Figure()
     
-    # Create timeline
-    times = [cycle["time_ist"] for cycle in daily_cycles[:10]]
+    # Create timeline - convert datetime to string for better plotly compatibility
+    times = [cycle["time_ist"].strftime("%H:%M") for cycle in daily_cycles[:10]]
     planets = [cycle["planet"] for cycle in daily_cycles[:10]]
     strengths = [cycle["strength"] for cycle in daily_cycles[:10]]
     
@@ -683,18 +683,20 @@ def create_planetary_timeline_chart(daily_cycles, current_time):
         y=planets,
         mode='markers+text',
         marker=dict(
-            size=[max(15, strength/3) for strength in strengths],
+            size=[max(15, min(strength/3, 30)) for strength in strengths],
             color=[planet_colors.get(planet, "#666666") for planet in planets],
             line=dict(width=2, color="white")
         ),
-        text=[cycle["time_ist"].strftime("%H:%M") for cycle in daily_cycles[:10]],
+        text=[f"{cycle['target_degree']:.0f}°" for cycle in daily_cycles[:10]],
         textposition="middle center",
         textfont=dict(size=9, color="white"),
-        name="Planetary Events"
+        name="Planetary Events",
+        hovertemplate="<b>%{y}</b><br>Time: %{x}<br>Degree: %{text}<br><extra></extra>"
     ))
     
-    # Add current time line
-    fig.add_vline(x=current_time, line_dash="dash", line_color="red", 
+    # Add current time line using string format
+    current_time_str = current_time.strftime("%H:%M")
+    fig.add_vline(x=current_time_str, line_dash="dash", line_color="red", 
                   annotation_text="Current Time")
     
     fig.update_layout(
@@ -702,7 +704,8 @@ def create_planetary_timeline_chart(daily_cycles, current_time):
         xaxis_title="Time (IST)",
         yaxis_title="Planet",
         height=500,
-        showlegend=False
+        showlegend=False,
+        xaxis=dict(type='category')  # Treat x-axis as categorical
     )
     
     return fig
