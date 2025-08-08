@@ -1,7 +1,7 @@
 import streamlit as st
 import swisseph as swe
-from datetime import datetime, timedelta
-import time
+from datetime import datetime, timedelta, time
+import time as time_module
 import pandas as pd
 import plotly.graph_objects as go
 import math
@@ -347,6 +347,8 @@ def calculate_intraday_support_levels(current_price, planet_data, ist_time):
             "influence_pct": jupiter_influence
         })
     
+    return intraday_levels
+
 def identify_day_trading_zones(price_levels, current_price, intraday_levels):
     """Identify key buy/sell zones and high-probability time windows"""
     
@@ -481,7 +483,19 @@ def get_price_effect(planet, degree):
     }
     return effects.get(planet, "±1% to ±2%")
 
-def generate_daily_planetary_report(symbol, current_price, tehran_time):
+def is_within_market_hours(dt, market_type):
+    """Check if datetime is within market hours"""
+    t = dt.time()
+    if market_type == "Indian":
+        start = time_module(9, 15)
+        end = time_module(15, 30)
+        return start <= t <= end
+    else:  # Global
+        start = time_module(5, 0)
+        end = time_module(23, 55)
+        return start <= t <= end
+
+def generate_daily_planetary_report(symbol, current_price, tehran_time, market_type):
     """Generate focused daily planetary cycles report"""
     try:
         # Time conversions
@@ -509,8 +523,15 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         if not intraday_levels:
             intraday_levels = []
         
+        # Filter events based on market type
+        daily_cycles_filtered = [cycle for cycle in daily_cycles if is_within_market_hours(cycle['time_ist'], market_type)]
+        intraday_levels_filtered = [level for level in intraday_levels if is_within_market_hours(level['time'], market_type)]
+        
         # Get trading zones and high-probability times
-        sell_zones, buy_zones, high_prob_times = identify_day_trading_zones(price_levels, current_price, intraday_levels)
+        sell_zones, buy_zones, high_prob_times = identify_day_trading_zones(price_levels, current_price, intraday_levels_filtered)
+        
+        # Filter high probability times based on market type
+        high_prob_times_filtered = [time_window for time_window in high_prob_times if is_within_market_hours(time_window['time'], market_type)]
         
     except Exception as e:
         st.error(f"Error in data calculation: {e}")
@@ -518,19 +539,17 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
     
     try:
         # Generate report
+        market_hours = "9:15 AM - 3:30 PM" if market_type == "Indian" else "5:00 AM - 11:55 PM"
         report = f"""
-# 🌟 Daily Planetary Cycles - Indian Intraday Trading
+# 🌟 Daily Planetary Cycles - {market_type} Market Hours
 ## {symbol} Trading - {tehran_time.strftime('%Y-%m-%d')}
-
 ### ⏰ Time Base (All times in IST - Indian Standard Time)
 - **Tehran Time**: {tehran_time.strftime('%H:%M:%S')} 🇮🇷
 - **Indian Standard Time**: **{ist_time.strftime('%H:%M:%S')}** 🇮🇳  
+- **Market Hours**: **{market_hours}**
 - **Current {symbol} Price**: **{current_price:,.0f}**
-
 ---
-
 ## 🎯 Today's Planetary Intraday Levels (Perfect for Day Trading)
-
 | Planet | Position | Major Resist | Primary Resist | Current | Primary Support | Major Support | Strength |
 |--------|----------|--------------|----------------|---------|-----------------|---------------|----------|"""
         
@@ -549,19 +568,15 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         else:
             report += """
 | No data | - | - | - | - | - | - | - |"""
-
         # Intraday time-based planetary levels
         report += f"""
-
 ---
-
 ## ⏰ Intraday Time-Based Planetary Levels (IST)
-
 | Time (IST) | Price Level | Planet Level | Trading Signal | Influence |
 |------------|-------------|--------------|----------------|-----------|"""
         
-        if intraday_levels:
-            for level in intraday_levels[:15]:  # Show next 15 time-based levels
+        if intraday_levels_filtered:
+            for level in intraday_levels_filtered[:15]:  # Show next 15 time-based levels
                 try:
                     time_str = level["time"].strftime("%H:%M")
                     influence_str = f"{level['influence_pct']:+.2f}%"
@@ -573,14 +588,10 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         else:
             report += """
 | No intraday levels | - | - | - | - |"""
-
         # Day Resistance Sell Zones (Highlighted)
         report += f"""
-
 ---
-
 ## 🔴 DAY RESISTANCE LEVELS - SELL ZONES
-
 | Priority | Planet Level | Price | Distance | Strength | Zone Quality | Action |
 |----------|--------------|-------|----------|----------|--------------|--------|"""
         
@@ -600,11 +611,8 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         
         # Day Support Buy Zones (Highlighted)
         report += f"""
-
 ---
-
 ## 🟢 DAY SUPPORT LEVELS - BUY ZONES
-
 | Priority | Planet Level | Price | Distance | Strength | Zone Quality | Action |
 |----------|--------------|-------|----------|----------|--------------|--------|"""
         
@@ -621,19 +629,15 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         else:
             report += """
 | No buy zones | - | - | - | - | - | - |"""
-
         # High Probability Time Windows
         report += f"""
-
 ---
-
 ## ⏰ HIGH PROBABILITY TIME WINDOWS - BUY/SELL ZONES
-
 | Time (IST) | Zone Type | Planet Signal | Probability | Action Type | Price Target | Trade Setup |
 |------------|-----------|---------------|-------------|-------------|--------------|-------------|"""
         
-        if high_prob_times:
-            for time_window in high_prob_times[:12]:  # Next 12 high-probability windows
+        if high_prob_times_filtered:
+            for time_window in high_prob_times_filtered[:12]:  # Next 12 high-probability windows
                 try:
                     time_str = time_window["time"].strftime("%H:%M")
                     
@@ -654,19 +658,15 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         else:
             report += """
 | No time windows | - | - | - | - | - | - |"""
-
         # Today's critical time cycles
         report += f"""
-
 ---
-
 ## ⏱️ Today's Critical Planetary Time Cycles (IST)
-
 | Time (IST) | Planet | Event | Trading Action | Expected Move | Hours Away |
 |------------|--------|-------|----------------|---------------|------------|"""
         
-        if daily_cycles:
-            for cycle in daily_cycles[:10]:
+        if daily_cycles_filtered:
+            for cycle in daily_cycles_filtered[:10]:
                 try:
                     time_str = cycle["time_ist"].strftime("%H:%M")
                     hours_str = f"{cycle['hours_away']:+.1f}h"
@@ -678,7 +678,6 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
         else:
             report += """
 | No major cycles today | - | - | - | - | - |"""
-
         # Add summary
         strongest_planet = "Sun"  # Default
         if price_levels:
@@ -688,33 +687,26 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
                 strongest_planet = "Sun"
         
         next_event_text = "No major events today"
-        if daily_cycles:
+        if daily_cycles_filtered:
             try:
-                next_event_text = f"{daily_cycles[0]['time_ist'].strftime('%H:%M IST')} - {daily_cycles[0]['planet']} @ {daily_cycles[0]['target_degree']:.0f}°"
+                next_event_text = f"{daily_cycles_filtered[0]['time_ist'].strftime('%H:%M IST')} - {daily_cycles_filtered[0]['planet']} @ {daily_cycles_filtered[0]['target_degree']:.0f}°"
             except:
                 pass
-
         report += f"""
-
 ---
-
 ## 💡 Today's Key Insights
-
 ### 🎯 Dominant Influence: **{strongest_planet}**
 - **Primary Action**: Focus on {strongest_planet.lower()} levels for best trades
-
 ### 📊 Trading Summary:
 - **Sell Zones**: {len(sell_zones)} resistance levels identified
 - **Buy Zones**: {len(buy_zones)} support levels identified  
-- **High Prob Windows**: {len(high_prob_times)} time-based opportunities
-- **Active Cycles**: {len(daily_cycles)} planetary events today
-
+- **High Prob Windows**: {len(high_prob_times_filtered)} time-based opportunities
+- **Active Cycles**: {len(daily_cycles_filtered)} planetary events today
 ---
-
 > **🚨 Next Major Event**: {next_event_text}
 """
         
-        return report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times
+        return report, price_levels, daily_cycles_filtered, intraday_levels_filtered, sell_zones, buy_zones, high_prob_times_filtered
         
     except Exception as e:
         st.error(f"Error generating report: {e}")
@@ -722,19 +714,17 @@ def generate_daily_planetary_report(symbol, current_price, tehran_time):
 
 # Streamlit App
 st.set_page_config(layout="wide", page_title="Daily Planetary Cycles")
-
-st.title("🌟 Daily Planetary Cycles - Indian Intraday Trading")
-st.markdown("*Realistic support/resistance levels for Nifty, Bank Nifty & Indian markets - All times in IST*")
+st.title("🌟 Daily Planetary Cycles - Market Specific Trading")
+st.markdown("*Realistic support/resistance levels for Nifty, Bank Nifty & Global markets - All times in IST*")
 
 # Input section
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    symbol = st.text_input("Symbol", value="NIFTY", help="Trading symbol (NIFTY, BANKNIFTY, etc.)")
+    symbol = st.text_input("Symbol", value="NIFTY", help="Trading symbol (NIFTY, BANKNIFTY, GOLD, etc.)")
     
 with col2:
     current_price = st.number_input("Current Price", value=24594.0, step=0.1, help="Current market price")
-
+    
 with col3:
     default_time = datetime.now()
     tehran_time_input = st.text_input("Time", 
@@ -748,14 +738,18 @@ except:
     tehran_time = datetime.now()
     st.error("Invalid time format, using current time")
 
+# Market type selection
+market_type = st.selectbox("Market Type", ["Indian", "Global"], 
+                          help="Indian Market: 9:15 AM - 3:30 PM IST | Global Market: 5:00 AM - 11:55 PM IST")
+
 # Generate report
 if st.button("🚀 Generate Today's Report", type="primary"):
     try:
         with st.spinner("🌌 Calculating planetary cycles..."):
-            start_time = time.time()
+            start_time = time_module.time()
             report, price_levels, daily_cycles, intraday_levels, sell_zones, buy_zones, high_prob_times = generate_daily_planetary_report(
-                symbol, current_price, tehran_time)
-            elapsed_time = time.time() - start_time
+                symbol, current_price, tehran_time, market_type)
+            elapsed_time = time_module.time() - start_time
             
         st.success(f"✅ Report generated in {elapsed_time:.2f} seconds")
         
@@ -941,6 +935,14 @@ if st.button("🚀 Generate Today's Report", type="primary"):
 
 # Sidebar
 with st.sidebar:
+    st.markdown("### 🌍 Market Selection")
+    st.markdown("""
+    **Market Types:**
+    - 🇮🇳 **Indian Market**: 9:15 AM - 3:30 PM IST
+    - 🌐 **Global Market**: 5:00 AM - 11:55 PM IST
+    
+    **Current Selection:** """ + market_type)
+    
     st.markdown("### 🇮🇳 For Indian Traders")
     st.markdown("""
     **Perfect for NSE/BSE:**
