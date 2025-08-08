@@ -5,35 +5,12 @@ import time as time_module
 import pandas as pd
 import plotly.graph_objects as go
 import math
-import os
 
-# Initialize ephemeris with proper error handling
-def initialize_ephemeris():
-    """Initialize Swiss Ephemeris with proper path and error handling"""
-    try:
-        # Try to set ephemeris path to default location
-        swe.set_ephe_path(os.path.join(os.path.dirname(__file__), 'ephe'))
-        
-        # Test if ephemeris is working by calculating a simple position
-        test_jd = swe.julday(2023, 1, 1, 0)
-        test_result = swe.calc_ut(test_jd, swe.SUN)
-        
-        if len(test_result) < 7 or test_result[6] != 0:
-            # Try alternative path
-            swe.set_ephe_path(None)
-            test_result = swe.calc_ut(test_jd, swe.SUN)
-            
-            if len(test_result) < 7 or test_result[6] != 0:
-                raise Exception("Swiss Ephemeris initialization failed")
-                
-        return True
-    except Exception as e:
-        st.error(f"Error initializing Swiss Ephemeris: {e}")
-        return False
-
-# Initialize ephemeris at startup
-if not initialize_ephemeris():
-    st.error("Failed to initialize Swiss Ephemeris. Please check ephemeris files.")
+# Initialize ephemeris
+try:
+    swe.set_ephe_path(None)
+except Exception as e:
+    st.error(f"Error initializing Swiss Ephemeris: {e}")
     st.stop()
 
 # Planetary cycle characteristics
@@ -50,9 +27,9 @@ PLANETARY_CYCLES = {
     "Pluto": {"cycle_hours": 1440, "major_degrees": [0, 180], "influence": "Transformation levels"}
 }
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+@st.cache_data
 def get_planetary_positions(julian_day):
-    """Get planetary positions for any date with improved error handling"""
+    """Get planetary positions for any date"""
     planets = {
         "Sun": swe.SUN, "Moon": swe.MOON, "Mercury": swe.MERCURY,
         "Venus": swe.VENUS, "Mars": swe.MARS, "Jupiter": swe.JUPITER,
@@ -97,21 +74,6 @@ def get_planetary_positions(julian_day):
     
     return planet_data
 
-# Add a health check endpoint handler
-def handle_health_check():
-    """Handle health check requests"""
-    try:
-        # Test if Swiss Ephemeris is working
-        test_jd = swe.julday(2023, 1, 1, 0)
-        test_result = swe.calc_ut(test_jd, swe.SUN)
-        
-        if len(test_result) >= 7 and test_result[6] == 0:
-            return True, "OK"
-        return False, "Swiss Ephemeris not working properly"
-    except Exception as e:
-        return False, f"Health check failed: {str(e)}"
-
-# The rest of your functions remain the same
 def get_zodiac_sign(longitude):
     """Get zodiac sign from longitude"""
     signs = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
@@ -1256,13 +1218,6 @@ st.set_page_config(layout="wide", page_title="Planetary Trading Reports")
 st.title("🌟 Planetary Trading Reports - Any Date Analysis")
 st.markdown("*Generate planetary trading reports for any date and time with precise support/resistance levels*")
 
-# Add a health check status indicator
-health_status, health_message = handle_health_check()
-if health_status:
-    st.success(f"✅ System Status: {health_message}")
-else:
-    st.error(f"❌ System Status: {health_message}")
-
 # Input section
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -1278,6 +1233,7 @@ with col3:
 # Date and time selection
 st.markdown("### 📅 Select Date and Time for Analysis")
 col1, col2 = st.columns(2)
+
 with col1:
     selected_date = st.date_input(
         "Select Date",
@@ -1286,6 +1242,7 @@ with col1:
         max_value=datetime(2030, 12, 31).date(),
         help="Choose any date between 2020 and 2030"
     )
+
 with col2:
     selected_time = st.time_input(
         "Select Time (Tehran Time)",
@@ -1299,26 +1256,31 @@ tehran_time = datetime.combine(selected_date, selected_time)
 # Quick date presets
 st.markdown("### 🗓️ Quick Date Presets")
 preset_col1, preset_col2, preset_col3, preset_col4, preset_col5 = st.columns(5)
+
 with preset_col1:
     if st.button("Aug 6, 2025"):
         selected_date = datetime(2025, 8, 6).date()
         tehran_time = datetime.combine(selected_date, datetime.now().time())
         st.rerun()
+
 with preset_col2:
     if st.button("Aug 11, 2025"):
         selected_date = datetime(2025, 8, 11).date()
         tehran_time = datetime.combine(selected_date, datetime.now().time())
         st.rerun()
+
 with preset_col3:
     if st.button("Aug 15, 2025"):
         selected_date = datetime(2025, 8, 15).date()
         tehran_time = datetime.combine(selected_date, datetime.now().time())
         st.rerun()
+
 with preset_col4:
     if st.button("Dec 31, 2025"):
         selected_date = datetime(2025, 12, 31).date()
         tehran_time = datetime.combine(selected_date, datetime.now().time())
         st.rerun()
+
 with preset_col5:
     if st.button("Dec 31, 2026"):
         selected_date = datetime(2026, 12, 31).date()
